@@ -1,8 +1,11 @@
-#!/bin/sh
+#!/bin/bash
 #
 # verify-identity.sh — FurryOS 系统身份层静态校验（不启动真实系统）
 #
 # 用法：bash tools/verify-identity.sh
+#
+# 注意：本脚本使用了进程替换 <(...)，只能由 bash 执行。
+# 用 sh（dash）运行会在第 152 行报 Syntax error: "(" unexpected。
 #
 # 原理：
 #   宿主是 Debian 12，无法安装 Ubuntu 包，也不能启动 Ubuntu 内核。

@@ -308,28 +308,3 @@ ISO 产出验收清单（由 build-verify 完成后填入）：
 | live-build 的 `LB_LINUX_PACKAGES` / `LB_LINUX_FLAVOURS_WITH_ARCH` 在 noble 中不兼容 | `linux-image-generic-amd64` 在 noble index 不存在 | config/chroot 中设为 `linux-generic` 并配合 6200 钩子在 chroot_install-packages 前重写包名 |
 | `qt5-image-formats` 在 noble 已移除至源包 | 若不安装，爪印将静默消失（无错误弹窗） | 建议始终 `apt-get install -y qt5-image-formats`；或在 BUILD.md 3.1 ④ 提供修复命令 |
 | `debian-archive-keyring` 在 Ubuntu 中不存在 | gpgv 信任链验证失败 | config/environment.chroot 中设为 `ubuntu-keyring`；并在 chroot_install-packages 前提前安装 |
-
-## 4. 验收
-
-逐项验收由 t8 负责。登录体验层的关键校验点：
-
-```sh
-grep '^Current' /etc/sddm.conf                          # → Current=furryos
-ls /usr/share/sddm/themes/furryos/{Main.qml,metadata.desktop,theme.conf}
-ls /usr/share/sddm/themes/furryos/components/           # 6 个文件
-ls /usr/share/sddm/themes/furryos/assets/paw.svg
-```
-
-完整构建日志：`docs/BUILD-LOG.md`（由 build-verify 维护）。
-
----
-
-## 5. 已知环境限制（开发期如实记录）
-
-构建/验证在 Debian 12 宿主上进行，与目标 Ubuntu LTS 存在差异：
-
-| 限制 | 影响 | 已采取的替代验证 |
-|---|---|---|
-| 宿主无 GL 上下文（`QOpenGLContext::create()` 失败，无 llvmpipe 注册） | 无法用 `qmlscene`/`QQuickView::grabWindow()` 真实渲染 QML 场景，**无法在宿主机跑出 SDDM 真实截图** | 用 `QQmlComponent` 在无 GL 的 QML 引擎中实例化完整主题对象树，读取真实属性断言；另按真实坐标用 QtGui 2D 绘制四状态预览图 |
-| 宿主 `/usr/bin/qmllint` 是 qtchooser 符号链接，指向不存在的 `/usr/lib/qt5/bin/qmllint` | 无法直接调用 | 从 Debian bookworm 取 `qtdeclarative5-dev-tools_5.15.8+dfsg-3` 解出真实二进制 |
-| 宿主非目标 Ubuntu LTS | 无法启动真实 SDDM 会话 | 提供 `install-sddm-theme.sh` 供 live-build 注入；真实目视确认步骤见 3.1 ⑦ |
