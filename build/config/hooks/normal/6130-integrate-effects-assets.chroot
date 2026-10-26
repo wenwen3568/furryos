@@ -1,0 +1,162 @@
+#!/bin/sh
+
+# FurryOS 6130 - motion effects layer (assets/effects -> target system).
+#
+# Owner of the affected files: motion-effects (docs/CONTRACTS.md).
+# This hook only performs the injection; it does not define the content.
+#
+# What the layer provides (assets/effects/):
+#   click-effect/effects-install.sh   its own installer (injection A+B)
+#   click-effect/effects-verify.sh    its own verification
+#   click-effect/community-click-effect.sh   degradation path (NOT executed)
+#   splash/furryos-splash.svg         splash artwork
+#   splash/furryos-plymouth/          plymouth theme assets (images only)
+#   splash/furryos-ksplash/           (currently empty)
+#
+# Injection strategy
+# ------------------
+# The layer's effects-install.sh already implements the exact policy its owner
+# designed and documented:
+#
+#   A) /etc/skel/.config/{kdeglobals,kwinrc}  -> new accounts get the effect on
+#      first login. It deliberately only *appends* the [Plugins] /
+#      [Effects] / [Effect-mouseclick] keys and never rewrites the file,
+#      because /etc/skel/.config/kdeglobals is owned by desktop-visual, who
+#      merges the same sections into his own copy. Running the installer
+#      against the ALREADY-MERGED skel file is therefore safe and idempotent.
+#
+#   B) /etc/xdg/{kwinrc,kdeglobals}   -> system-wide defaults, read by KConfig
+#      when a user has never set the key.
+#
+# We run that installer in build-time mode (no --live: there is no Plasma
+# session inside a chroot).
+#
+# ORDERING
+#   6110 (desktop-visual) merges skel/ into /etc/skel, so this hook must run
+#   AFTER it - hence the 6130 number. The layer's installer is safe either way
+#   (it appends only missing keys), but the intended order is desktop-visual
+#   first, then effects.
+#
+# What this hook additionally does (beyond the layer's installer):
+#   * splash artwork -> /usr/share/backgrounds/furryos/splash.{svg,png}
+#   * plymouth theme: assets/effects/splash/furryos-plymouth currently only
+#     ships images/ and has NO .plymouth file, so there is nothing that can be
+#     registered with update-alternatives. plymouth is also deliberately NOT in
+#     the package list. This is a documented degradation, not a failure.
+
+set -e
+
+. /live-build/config/hooks/normal/furryos-common.sh
+
+SRC="${FURRYOS_ASSETS}/effects"
+
+furryos_log "Installing motion effects layer from ${SRC}"
+
+if [ ! -d "${SRC}" ]
+then
+	furryos_warn "effects layer not staged; skipping (click effect and splash will be absent)"
+	exit 0
+fi
+
+# --------------------------------------------------- click effect (A + B)
+INSTALLER="${SRC}/click-effect/effects-install.sh"
+
+if [ -e "${INSTALLER}" ]
+then
+	if [ -x "${INSTALLER}" ]
+	then
+		# Build-time mode: inject into skel + /etc/xdg. NOT --live, because
+		# there is no Plasma session in a chroot.
+		PREFIX=/ "${INSTALLER}" || furryos_warn "effects-install.sh returned non-zero"
+	else
+		PREFIX=/ sh "${INSTALLER}" || furryos_warn "effects-install.sh returned non-zero"
+	fi
+else
+	furryos_warn "layer installer effects-install.sh not found; using build-verify fallback"
+	# Minimal fallback: the same keys, appended to skel + xdg.
+	for BASE in /etc/skel/.config /etc/xdg; do
+		install -d -m 0755 "${BASE}"
+		for FILE in kwinrc kdeglobals; do
+			TARGET="${BASE}/${FILE}"
+			if [ -f "${TARGET}" ]
+			then
+				grep -q '^\[Plugins\]' "${TARGET}" || printf '\n[Plugins]\nmouseclickEnabled=true\n' >> "${TARGET}"
+				grep -q '^\[Effects\]' "${TARGET}" || printf '\n[Effects]\nClick=true\n' >> "${TARGET}"
+			else
+				printf '[Plugins]\nmouseclickEnabled=true\n[Effects]\nClick=true\n' > "${TARGET}"
+			fi
+		done
+	done
+	furryos_log "fallback click-effect configuration applied to /etc/skel/.config and /etc/xdg"
+fi
+
+# ------------------------------------------------------- splash artwork
+# The layer ships splash/furryos-splash.svg (vector) plus preview PNGs. A
+# raster copy is placed under /usr/share/backgrounds/furryos so the Desktop
+# "Wallpaper" dialog can offer it; the SVG itself is installed too for
+# anything that prefers vector.
+install -d -m 0755 /usr/share/backgrounds/furryos
+
+if [ -e "${SRC}/splash/furryos-splash.svg" ]
+then
+	furryos_install_file "${SRC}/splash/furryos-splash.svg" \
+		/usr/share/backgrounds/furryos/splash.svg 0644
+	furryos_log "installed /usr/share/backgrounds/furryos/splash.svg"
+fi
+
+for RASTER in splash.png furryos-splash.png furryos-splash-preview.png; do
+	if [ -e "${SRC}/splash/${RASTER}" ]
+	then
+		furryos_install_file "${SRC}/splash/${RASTER}" \
+			/usr/share/backgrounds/furryos/splash.png 0644
+		furryos_log "installed /usr/share/backgrounds/furryos/splash.png (from ${RASTER})"
+		break
+	fi
+done
+
+# ---------------------------------------------------------- plymouth theme
+# plymouth is deliberately NOT in the package list (see docs/BUILD.md), so
+# even a complete theme could not be activated without adding the package.
+# Additionally the layer's furryos-plymouth/ currently contains only images/
+# and no .plymouth control file, so there is nothing to register. Handle both
+# cases and record what happened.
+PLYMOUTH_SRC="${SRC}/splash/furryos-plymouth"
+
+if [ -d "${PLYMOUTH_SRC}" ] && [ -n "$(ls -A "${PLYMOUTH_SRC}" 2>/dev/null)" ]
+then
+	if ls "${PLYMOUTH_SRC}"/*.plymouth >/dev/null 2>&1
+	then
+		install -d -m 0755 /usr/share/plymouth/themes/furryos
+		cp -a "${PLYMOUTH_SRC}/." /usr/share/plymouth/themes/furryos/
+		furryos_log "copied plymouth theme to /usr/share/plymouth/themes/furryos"
+
+		if command -v update-alternatives >/dev/null 2>&1
+		then
+			update-alternatives --install /usr/share/plymouth/themes/default.plymouth \
+				default.plymouth /usr/share/plymouth/themes/furryos/furryos.plymouth 100 \
+				|| furryos_warn "update-alternatives for plymouth failed"
+			furryos_log "registered plymouth theme via update-alternatives"
+		fi
+	else
+		furryos_warn "plymouth theme assets found but no *.plymouth control file; cannot register"
+	fi
+else
+	furryos_warn "no plymouth theme provided; boot splash will stay the Ubuntu default"
+fi
+
+# ------------------------------------------------------------- verify
+if [ -f /etc/skel/.config/kwinrc ] && grep -q 'mouseclickEnabled=true' /etc/skel/.config/kwinrc
+then
+	furryos_log "skel kwinrc: [Plugins] mouseclickEnabled=true present"
+else
+	furryos_warn "skel kwinrc does not enable mouseclickEnabled"
+fi
+
+if [ -f /etc/xdg/kwinrc ] && grep -q 'mouseclickEnabled=true' /etc/xdg/kwinrc
+then
+	furryos_log "/etc/xdg/kwinrc: [Plugins] mouseclickEnabled=true present"
+else
+	furryos_warn "/etc/xdg/kwinrc does not enable mouseclickEnabled"
+fi
+
+furryos_log "Motion effects layer installed."

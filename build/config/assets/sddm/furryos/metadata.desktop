@@ -1,0 +1,18 @@
+[SddmGreeterTheme]
+Name=FurryOS
+Name[zh_CN]=FurryOS 登录主题
+Description=FurryOS blue-and-white login theme with paw decoration and responsive button animations
+Description[zh_CN]=FurryOS 蓝白登录主题：爪印装饰 + 按钮响应动效
+Author=FurryOS Build Team
+Copyright=(c) 2024 FurryOS Build Team
+License=CC-BY-SA
+Type=sddm-theme
+Version=0.1
+Website=https://github.com/sddm/sddm
+Screenshot=preview.png
+MainScript=Main.qml
+ConfigFile=theme.conf
+TranslationsDirectory=translations
+Email=sddm-experience@furryos.local
+Theme-Id=furryos
+Theme-API=2.0

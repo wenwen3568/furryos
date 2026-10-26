@@ -1,0 +1,12 @@
+# FurryOS live-build chroot environment overrides.
+#
+# Host constraint: /root/furryos is mounted nodev. Device nodes created on it
+# exist but cannot be opened, which breaks every package postinst that
+# redirects to /dev/null (base-files, dpkg, procps, libc6 ...).
+#
+# live-build's Chroot() helper enters the chroot with `env -i`, so anything
+# exported by tools/lb.sh is wiped. Declaring the marker here re-establishes
+# it for the second-stage debootstrap and every later chroot command, which
+# then bind-mounts the host's working /dev devices instead of using the
+# unusable nodes.
+FURRYOS_BIND_DEVICES=1

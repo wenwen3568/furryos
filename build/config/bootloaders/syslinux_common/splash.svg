@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!--
+  FurryOS isolinux/syslinux boot splash (640x480).
+
+  This file replaces the upstream
+  /usr/share/live/build/bootloaders/syslinux_common/splash.svg, which rendered
+  the text "@PROJECT@ @VERSION@ (@DISTRIBUTION@)". live-build's binary_syslinux
+  hard-codes _PROJECT="Debian GNU/Linux" with no config knob, so the upstream
+  splash would print "Debian GNU/Linux ..." on the FurryOS boot screen.
+
+  This replacement drops @PROJECT@ entirely and prints "FurryOS" instead,
+  which is the only user-visible fix available for that string.
+
+  Palette (assets/brand/brand-tokens.md):
+    furryos-blue       #1A6FD4
+    furryos-blue-dark  #0F4C8C
+    furryos-blue-deep  #0A3568
+    furryos-blue-light #D6E6F7
+    furryos-blue-pale  #EAF2FF
+    furryos-white      #FFFFFF
+    furryos-text       #12283F
+
+  Paw mark geometry follows assets/brand/paw.svg (256x256 viewBox) so the
+  boot screen matches the rest of the FurryOS visual identity.
+
+  live-build substitutes the @...@ placeholders below with real values and
+  rasterises this to splash.png (640x480) and splash800x600.png (800x600)
+  via rsvg-convert.
+-->
+<svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   version="1.1"
+   width="640"
+   height="480"
+   id="svg2">
+  <defs
+     id="defs4">
+    <linearGradient
+       id="furryosBgGradient">
+      <stop
+         id="stop7"
+         offset="0"
+         style="stop-color:#EAF2FF;stop-opacity:1" />
+      <stop
+         id="stop9"
+         offset="0.55"
+         style="stop-color:#D6E6F7;stop-opacity:1" />
+      <stop
+         id="stop11"
+         offset="1"
+         style="stop-color:#1A6FD4;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+
+  <!-- background -->
+  <rect
+     width="640"
+     height="480"
+     x="0"
+     y="0"
+     id="bg"
+     style="fill:url(#furryosBgGradient);stroke:none" />
+
+  <!-- decorative paw marks (background only, kept clear of the menu area) -->
+  <g
+     id="paws"
+     style="fill:#1A6FD4;fill-opacity:0.10;stroke:none">
+    <!-- top-right cluster -->
+    <g transform="translate(520,40) scale(1.6)">
+      <path d="M128 150c32 0 58 21 58 45 0 16-15 27-33 27h-50c-18 0-33-11-33-27 0-24 26-45 58-45z"/>
+      <ellipse cx="50" cy="108" rx="25" ry="32"/>
+      <ellipse cx="97" cy="62" rx="24" ry="32"/>
+      <ellipse cx="159" cy="62" rx="24" ry="32"/>
+      <ellipse cx="206" cy="108" rx="25" ry="32"/>
+    </g>
+    <!-- bottom-left, small -->
+    <g transform="translate(30,360) scale(0.9)">
+      <path d="M128 150c32 0 58 21 58 45 0 16-15 27-33 27h-50c-18 0-33-11-33-27 0-24 26-45 58-45z"/>
+      <ellipse cx="50" cy="108" rx="25" ry="32"/>
+      <ellipse cx="97" cy="62" rx="24" ry="32"/>
+      <ellipse cx="159" cy="62" rx="24" ry="32"/>
+      <ellipse cx="206" cy="108" rx="25" ry="32"/>
+    </g>
+  </g>
+
+  <!-- solid accent bar -->
+  <rect
+     width="640"
+     height="10"
+     x="0"
+     y="0"
+     id="accentbar"
+     style="fill:#0A3568;stroke:none" />
+
+  <!-- wordmark -->
+  <text
+     xml:space="preserve"
+     style="font-style:normal;font-weight:bold;font-stretch:normal;font-size:44px;line-height:1.25;font-family:'DejaVu Sans';-inkscape-font-specification:'DejaVu Sans Bold';text-anchor:start;fill:#0A3568;fill-opacity:1;stroke:none"
+     x="191"
+     y="78"
+     id="wordmark">FurryOS</text>
+
+  <!-- build metadata. Deliberately does NOT use @PROJECT@: live-build's
+       binary_syslinux hard-codes _PROJECT="Debian GNU/Linux". -->
+  <text
+     xml:space="preserve"
+     style="font-style:normal;font-weight:bold;font-stretch:normal;font-size:16px;line-height:1.2;font-family:'DejaVu Sans';-inkscape-font-specification:'DejaVu Sans Bold';text-anchor:start;fill:#0F4C8C;fill-opacity:1;stroke:none"
+     x="191"
+     y="620"
+     id="meta1">@VERSION@ (@DISTRIBUTION@) - @ARCHITECTURE@</text>
+  <text
+     xml:space="preserve"
+     style="font-style:normal;font-weight:normal;font-stretch:normal;font-size:10px;line-height:1.2;font-family:'DejaVu Sans';-inkscape-font-specification:'DejaVu Sans';text-anchor:start;fill:#12283F;fill-opacity:1;stroke:none"
+     x="191"
+     y="700">Built: @YEAR@-@MONTH@-@DAY@ @HOUR@:@MINUTE@:@SECOND@ @TIMEZONE@</text>
+  <text
+     xml:space="preserve"
+     style="font-style:normal;font-weight:normal;font-stretch:normal;font-size:10px;line-height:1.2;font-family:'DejaVu Sans';-inkscape-font-specification:'DejaVu Sans';text-anchor:start;fill:#12283F;fill-opacity:1;stroke:none"
+     x="191"
+     y="716">linux: @LINUX_VERSIONS@</text>
+  <text
+     xml:space="preserve"
+     style="font-style:normal;font-weight:normal;font-stretch:normal;font-size:10px;line-height:1.2;font-family:'DejaVu Sans';-inkscape-font-specification:'DejaVu Sans';text-anchor:start;fill:#12283F;fill-opacity:1;stroke:none"
+     x="191"
+     y="732">live-build: @LIVE_BUILD_VERSION@</text>
+</svg>

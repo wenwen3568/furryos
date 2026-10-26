@@ -1,0 +1,14 @@
+#!/bin/sh
+#
+# 10-help-text - FurryOS 帮助入口
+#
+# 替代上游 base-files 的 /etc/update-motd.d/10-help-text。
+# 上游版本打印 help.ubuntu.com / landscape.canonical.com / ubuntu.com/pro，
+# 会把 Ubuntu 与 Canonical 的入口暴露给登录用户。
+#
+# 由 FurryOS 系统身份层提供，安装位置 /etc/update-motd.d/10-help-text，权限 0755。
+
+printf "\n"
+printf " * Documentation:  https://furryos.example.org/docs\n"
+printf " * Community:      https://furryos.example.org/community\n"
+printf " * Support:        https://furryos.example.org/support\n"

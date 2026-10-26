@@ -1,0 +1,30 @@
+#!/bin/sh
+
+# FurryOS live-stage hook (required pairing for config/hooks/normal/*.chroot).
+#
+# WHY THIS FILE MUST EXIST
+# ------------------------
+# live-build's lb chroot_hooks only enters its processing block when BOTH of
+# these are true:
+#
+#     ls config/hooks/normal/*.chroot  >/dev/null 2>&1 && (
+#        ls config/hooks/live/*.chroot >/dev/null 2>&1 ||
+#        ls config/hooks/live/*.container >/dev/null 2>&1 )
+#
+# In other words, without at least one *.chroot file in config/hooks/live/,
+# ALL of the FurryOS normal/ hooks would be silently skipped and the build
+# would produce an unbranded image. This file is therefore load-bearing and
+# must not be deleted.
+#
+# WHAT IT DOES
+# ------------
+# Nothing beyond logging. The branding work is deliberately done in the
+# normal/ hooks so it also runs for `lb chroot` invocations used for
+# verification. Keeping this hook side-effect free means re-running it is
+# always safe.
+
+set -e
+
+. /live-build/config/hooks/normal/furryos-common.sh
+
+furryos_log "FurryOS live-stage hook (pairing enabler) executed."

@@ -1,0 +1,27 @@
+# FurryOS desktop containment defaults (/etc/skel/.config/plasma-org.kde.plasma.desktop-appletsrc).
+#
+# Sets the desktop wallpaper plugin and image for the primary containment so
+# the very first desktop shows the FurryOS paw wallpaper. The panel layout
+# itself comes from the look-and-feel package's
+# contents/layouts/org.kde.plasma.desktop-layout.js, which Plasma applies when
+# the FurryOS global theme is selected.
+
+[Containments][1]
+activity=Desktop
+desktop=
+formfactor=0
+lastScreen=0
+location=0
+plugin=org.kde.plasma.desktop
+wallpaperPlugin=org.kde.image
+
+[Containments][1][Configuration]
+PreloadWeight=0
+
+[Containments][1][Wallpaper][org.kde.image][General]
+FillMode=2
+Image=file:///usr/share/wallpapers/FurryOS/contents/images/1920x1080.png
+
+[Containments][1][Wallpaper][org.kde.image][General][ConfigDialog]
+DialogHeight=480
+DialogWidth=640

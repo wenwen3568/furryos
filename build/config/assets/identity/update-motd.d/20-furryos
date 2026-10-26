@@ -1,0 +1,42 @@
+#!/bin/sh
+#
+# 20-furryos - FurryOS 自己的动态信息（替代 50-motd-news）
+#
+# 上游 base-files 的 /etc/update-motd.d/50-motd-news 会：
+#   1. source /etc/lsb-release 构造 User-Agent（暴露 DISTRIB_DESCRIPTION）；
+#   2. 从 https://motd.ubuntu.com 拉取「Ubuntu wire」新闻并打印。
+# 这两条都会在登录后重新暴露 Ubuntu 名称，必须移除。
+#
+# 本脚本输出纯本地信息，不发起任何网络请求，因此：
+#   - 登录后不会出现 Ubuntu 字样；
+#   - 不会因为离线/镜像源不可用而在登录时卡住（上游 WAIT=5 的超时兜底被去掉）。
+#
+# 由 FurryOS 系统身份层提供，安装位置 /etc/update-motd.d/20-furryos，权限 0755。
+
+#  uptime / load
+if [ -r /proc/loadavg ]; then
+	printf " * System load:    %s\n" "$(cut -d' ' -f1-3 /proc/loadavg)"
+fi
+
+# 内存
+if [ -r /proc/meminfo ]; then
+	_TOTAL=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)
+	_AVAIL=$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo)
+	if [ -n "${_TOTAL}" ] && [ -n "${_AVAIL}" ] && [ "${_TOTAL}" -gt 0 ]; then
+		_USED=$(( (_TOTAL - _AVAIL) / 1024 ))
+		_TOTM=$(( _TOTAL / 1024 ))
+		printf " * Memory usage:   %s MiB of %s MiB\n" "${_USED}" "${_TOTM}"
+	fi
+fi
+
+# 磁盘（根分区）
+if command -v df >/dev/null 2>&1; then
+	_ROOT=$(df -h / 2>/dev/null | awk 'NR==2 {print $3" used of "$5}')
+	if [ -n "${_ROOT}" ]; then
+		printf " * Disk usage:     %s\n" "${_ROOT}"
+	fi
+fi
+
+printf "\n"
+printf "   FurryOS is a community desktop distribution.\n"
+printf "   Paw print: ( o ) ( o )\n"

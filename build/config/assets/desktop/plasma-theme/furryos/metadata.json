@@ -1,0 +1,22 @@
+{
+    "KPackageStructure": "Plasma/Theme",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Email": "",
+                "Name": "FurryOS Build Team"
+            }
+        ],
+        "Category": "",
+        "Description": "FurryOS desktop theme — Breeze layout recoloured with the FurryOS blue/white palette",
+        "Description[zh_CN]": "FurryOS 桌面主题 —— Breeze 布局配以 FurryOS 蓝白配色",
+        "EnabledByDefault": true,
+        "Id": "furryos",
+        "License": "CC-BY-SA-4.0",
+        "Name": "FurryOS",
+        "Name[zh_CN]": "FurryOS",
+        "Version": "1.0",
+        "Website": "https://www.kde.org"
+    },
+    "X-Plasma-API": "5.0"
+}

@@ -1,0 +1,23 @@
+#!/bin/sh
+#
+# 00-header - FurryOS MOTD 动态头部
+#
+# 替代上游 base-files 的 /etc/update-motd.d/00-header。
+# 上游版本会 source /etc/lsb-release 并打印 DISTRIB_DESCRIPTION，
+# 在未改写 lsb-release 时会输出 "Welcome to Ubuntu 24.04 LTS (...)"。
+# 本版本只读取 FurryOS 字段（DISTRIB_NAME / DISTRIB_VERSION / DISTRIB_RELEASE_NAME），
+# 并且不再回落到 lsb_release（lsb_release -d 输出 PRETTY_NAME，我们已经改为 FurryOS，
+# 但为了避免任何回退路径把上游名称带回来，这里直接用固定值）。
+#
+# 由 FurryOS 系统身份层提供，安装位置 /etc/update-motd.d/00-header，权限 0755。
+
+# FurryOS 标识（唯一权威来源：/etc/lsb-release 的 DISTRIB_NAME 系列）
+if [ -r /etc/lsb-release ]; then
+	. /etc/lsb-release
+fi
+
+FURRYOS_NAME="${DISTRIB_NAME:-FurryOS}"
+FURRYOS_VERSION="${DISTRIB_VERSION:-24.04}"
+
+printf "Welcome to %s %s (%s %s %s)\n" \
+	"${FURRYOS_NAME}" "${FURRYOS_VERSION}" "$(uname -o)" "$(uname -r)" "$(uname -m)"

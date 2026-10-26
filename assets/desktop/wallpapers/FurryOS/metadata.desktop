@@ -1,0 +1,14 @@
+[Desktop Entry]
+Name=FurryOS
+Name[zh_CN]=FurryOS
+Comment=FurryOS default wallpaper — blue gradient with the paw mark
+Comment[zh_CN]=FurryOS 默认壁纸 —— 蓝白渐变与爪印图案
+Type=Service
+X-KDE-ServiceTypes=Plasma/Wallpaper
+X-KDE-ParentApp=
+X-KDE-PluginInfo-Author=FurryOS Build Team
+X-KDE-PluginInfo-Email=
+X-KDE-PluginInfo-License=CC-BY-SA-4.0
+X-KDE-PluginInfo-Name=FurryOS
+X-KDE-PluginInfo-Version=1.0
+X-KDE-PluginInfo-Website=https://www.kde.org

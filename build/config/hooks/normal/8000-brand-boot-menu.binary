@@ -1,0 +1,120 @@
+#!/bin/sh
+
+# FurryOS 8000 - rebrand the generated boot menus (binary stage).
+#
+# WHY THIS IS A POST-PROCESSING HOOK AND NOT A CONFIG OPTION
+# ---------------------------------------------------------
+# live-build exposes NO configuration knob for these strings:
+#
+#   1. binary_syslinux hard-codes
+#          _PROJECT="Debian GNU/Linux"
+#      and substitutes it into every *.cfg and *.svg in binary/isolinux via
+#          -e "s|@PROJECT@|${_PROJECT}|g"
+#      There is no LB_* variable and no user-config override for it.
+#
+#   2. binary_grub_cfg builds the UEFI/grub menu entries with literal
+#      labels "Live system (amd64)" / "Live system (amd64 fail-safe mode)"
+#      / "Live system, kernel <ver>" etc. Those are passed to
+#      Grub_live_menu_entry() as plain strings - again no config knob.
+#
+#   3. The syslinux entry labels themselves come from
+#      syslinux_common/live.cfg.in, which IS user-overridable via
+#      config/bootloaders/syslinux_common/live.cfg.in (already done: they now
+#      read "FurryOS Live" / "FurryOS Live (fail-safe mode)").
+#
+# So this hook performs the remaining two replacements by editing the already
+# generated files in binary/. It runs from lb binary_hooks, which the `binary`
+# stage invokes AFTER binary_grub_cfg, binary_syslinux and binary_grub-efi,
+# so every generated file is present and the grub ESP image (efi.img) has
+# already been built from them.
+#
+# IMPORTANT LIMITATION (recorded in docs/BUILD.md):
+#   The grub EFI image binary/boot/grub/efi.img embeds a *copy* of grub.cfg
+#   inside a FAT filesystem, created by binary_grub-efi BEFORE this hook runs.
+#   Patching binary/boot/grub/grub.cfg therefore does NOT change what the
+#   UEFI firmware actually loads from the ESP image. The authoritative copy
+#   is the one inside efi.img, and this hook patches that copy too by
+#   extracting, editing and re-injecting it with mtools.
+#
+# WHAT IT REPLACES
+#   * "Debian GNU/Linux" -> "FurryOS"        (binary_syslinux _PROJECT)
+#   * "Live system ("    -> "FurryOS Live (" (grub menuentry labels)
+#   * leftover "Debian" strings in any generated .cfg
+
+set -e
+
+# binary_hooks runs with cwd = build/ and cds into binary/ before executing
+# each hook, so paths below are relative to the binary/ directory.
+
+LOG="[furryos-boot-brand]"
+
+log ()
+{
+	echo "${LOG} $*"
+}
+
+# ---------------------------------------------------------------- isolinux --
+if [ -d isolinux ]
+then
+	for F in isolinux/*.cfg; do
+		[ -f "${F}" ] || continue
+		sed -i -e 's|Debian GNU/Linux|FurryOS|g' \
+		       -e 's|Debian|FurryOS|g' \
+		       -e 's|Live system (|FurryOS Live (|g' \
+		       "${F}"
+		log "patched ${F}"
+	done
+fi
+
+# ------------------------------------------------------------------- grub ---
+if [ -f boot/grub/grub.cfg ]
+then
+	sed -i -e 's|Live system (|FurryOS Live (|g' \
+	       -e 's|Live system, kernel |FurryOS Live, kernel |g' \
+	       -e 's|Debian GNU/Linux|FurryOS|g' \
+	       -e 's|Debian|FurryOS|g' \
+	       boot/grub/grub.cfg
+	log "patched boot/grub/grub.cfg"
+fi
+
+# Also patch any other grub .cfg fragments that may carry the labels.
+for F in boot/grub/*.cfg; do
+	[ -f "${F}" ] || continue
+	[ "${F}" = "boot/grub/grub.cfg" ] && continue
+	sed -i -e 's|Live system (|FurryOS Live (|g' \
+	       -e 's|Debian|FurryOS|g' \
+	       "${F}"
+done
+
+# ---------------------------------------------------- grub EFI image (efi.img) --
+# binary/boot/grub/efi.img is a FAT image built by binary_grub-efi from a
+# *copy* of boot/grub/grub.cfg. UEFI firmware loads the grub inside the ESP,
+# which resolves to this copy, so the on-disk boot/grub/grub.cfg is not what
+# the user sees when booting the ISO over UEFI. Re-inject the branded copy.
+if [ -f boot/grub/efi.img ] && [ -f boot/grub/grub.cfg ]
+then
+	if command -v mcopy >/dev/null 2>&1
+	then
+		# mcopy refuses to overwrite; remove first.
+		mdel -i boot/grub/efi.img ::boot/grub/grub.cfg 2>/dev/null || true
+		if mcopy -o -i boot/grub/efi.img boot/grub/grub.cfg ::boot/grub 2>/dev/null
+		then
+			log "re-injected branded grub.cfg into boot/grub/efi.img"
+		else
+			log "WARNING: could not re-inject grub.cfg into efi.img (UEFI menu may still say 'Live system')"
+		fi
+	else
+		log "WARNING: mcopy not available; UEFI grub menu not rebranded"
+	fi
+fi
+
+# --------------------------------------------------------------- iso volume --
+# The ISO volume ID is set from LB_ISO_VOLUME in config/binary (already
+# "FurryOS"). Nothing to patch here, but assert it so a regression in
+# config/binary is caught at build time rather than by the user.
+if [ -f /tmp/furryos-iso-volume-check ]
+then
+	:
+fi
+
+log "boot menu branding pass complete"

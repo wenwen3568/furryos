@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+  <!--
+    FurryOS 启动画面（单一来源：assets/brand/brand-tokens.md）
+    用途：Plymouth（开机到 SDDM 之前）与 KSplash（登录到桌面）共用的视觉母版。
+    配色：蓝白。深蓝端 furryos-blue-deep #0A3568、主强调 furryos-blue #1A6FD4、
+          极浅蓝 furryos-blue-pale #EAF2FF、白 furryos-white #FFFFFF。
+    元素：中央爪印（品牌唯一符号 assets/brand/paw.svg 的等比放大版）
+          + 下方 FurryOS 字标（无 Ubuntu 商标元素）。
+    过渡逻辑：
+      1) 开机阶段（Plymouth）：只显示渐变底 + 中央爪印 + 底部细进度条，
+         不显示字标，避免低分辨率/早期 framebuffer 下文字发虚。
+      2) 登录前（SDDM）：蓝白底 + 爪印 + 字标，与 SDDM 主题（assets/sddm/furryos）
+         的 PawBackground / loginCard 视觉一致，实现「衔接」。
+      3) 登录后（KSplash）：与 (2) 同款画面，仅爪印做一次 200ms 的
+         轻微缩放（brand-tokens.md 第 4 节：点击反馈 200-300ms，轻快无夸张弹跳），
+         随后淡出进入桌面。
+    禁止项：不得出现 Ubuntu Logo/商标；爪印不得遮挡任何输入区域（启动画面无输入区）。
+  -->
+  <defs>
+    <linearGradient id="furryos-bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"   stop-color="#0A3568"/>
+      <stop offset="42%"  stop-color="#1A6FD4"/>
+      <stop offset="78%"  stop-color="#EAF2FF"/>
+      <stop offset="100%" stop-color="#FFFFFF"/>
+    </linearGradient>
+    <linearGradient id="furryos-bar" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%"   stop-color="#FFFFFF" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="1"/>
+    </linearGradient>
+  </defs>
+
+  <!-- 背景：蓝白渐变 -->
+  <rect x="0" y="0" width="1920" height="1080" fill="url(#furryos-bg)"/>
+
+  <!-- 装饰：右下低透明度爪印群（浅色端，蓝白统一） -->
+  <g fill="#1A6FD4" opacity="0.07" transform="translate(1500,700) scale(2.2)">
+    <path d="M128 150c32 0 58 21 58 45 0 16-15 27-33 27h-50c-18 0-33-11-33-27 0-24 26-45 58-45z"/>
+    <ellipse cx="50" cy="108" rx="25" ry="32"/>
+    <ellipse cx="97" cy="62" rx="24" ry="32"/>
+    <ellipse cx="159" cy="62" rx="24" ry="32"/>
+    <ellipse cx="206" cy="108" rx="25" ry="32"/>
+  </g>
+  <g fill="#1A6FD4" opacity="0.05" transform="translate(120,120) scale(1.6)">
+    <path d="M128 150c32 0 58 21 58 45 0 16-15 27-33 27h-50c-18 0-33-11-33-27 0-24 26-45 58-45z"/>
+    <ellipse cx="50" cy="108" rx="25" ry="32"/>
+    <ellipse cx="97" cy="62" rx="24" ry="32"/>
+    <ellipse cx="159" cy="62" rx="24" ry="32"/>
+    <ellipse cx="206" cy="108" rx="25" ry="32"/>
+  </g>
+
+  <!-- 中央爪印（白色，位于渐变中段蓝底上，对比度足够） -->
+  <g transform="translate(810,300)">
+    <g fill="#FFFFFF" opacity="0.96">
+      <path d="M128 150c32 0 58 21 58 45 0 16-15 27-33 27h-50c-18 0-33-11-33-27 0-24 26-45 58-45z"/>
+      <ellipse cx="50" cy="108" rx="25" ry="32"/>
+      <ellipse cx="97" cy="62" rx="24" ry="32"/>
+      <ellipse cx="159" cy="62" rx="24" ry="32"/>
+      <ellipse cx="206" cy="108" rx="25" ry="32"/>
+    </g>
+  </g>
+
+  <!-- 字标：FurryOS -->
+  <text x="960" y="700" text-anchor="middle"
+        font-family="Noto Sans, DejaVu Sans, sans-serif"
+        font-size="96" font-weight="700" letter-spacing="6"
+        fill="#FFFFFF">FurryOS</text>
+
+  <!-- 副标语 -->
+  <text x="960" y="762" text-anchor="middle"
+        font-family="Noto Sans, DejaVu Sans, sans-serif"
+        font-size="30" letter-spacing="4"
+        fill="#EAF2FF">蓝白之间，轻快回应</text>
+
+  <!-- 底部进度条（Plymouth 会用脚本在其上绘制实际进度；此处为静态底轨） -->
+  <rect x="660" y="900" width="600" height="6" rx="3" fill="#FFFFFF" opacity="0.28"/>
+  <rect x="660" y="900" width="240" height="6" rx="3" fill="url(#furryos-bar)"/>
+</svg>

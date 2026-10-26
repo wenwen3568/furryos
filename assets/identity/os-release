@@ -1,0 +1,11 @@
+NAME="FurryOS"
+PRETTY_NAME="FurryOS 24.04 LTS"
+VERSION_ID="24.04"
+VERSION="24.04 LTS (FurryOS)"
+VERSION_CODENAME=noble
+ID=ubuntu
+ID_LIKE="ubuntu debian"
+HOME_URL="https://furryos.example.org/"
+SUPPORT_URL="https://furryos.example.org/support"
+BUG_REPORT_URL="https://furryos.example.org/issues"
+LOGO=furryos-logo

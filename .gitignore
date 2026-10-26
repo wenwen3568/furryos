@@ -1,0 +1,61 @@
+# ============================================================
+# FurryOS .gitignore
+# 原则：只入库"源码与配置"，构建产物/缓存/密钥一律排除。
+# 所有被排除的内容都可由 `lb build` 或 tools/ 脚本重新生成。
+# ============================================================
+
+# ---- 私钥：绝不入库 ----
+/.ssh/
+*.key
+id_rsa
+id_rsa.pub
+id_ed25519
+id_ed25519.pub
+
+# ---- live-build 构建产物 ----
+/build/cache/
+/build/chroot/
+/build/chroot.tmp/
+/build/chroot.cache/
+/build/binary/
+/build/.build/
+/build/chroot.files
+/build/chroot.packages.*
+/build/*.iso
+/build/*.img
+/build/*.list
+/build/*.log
+/build/*.zsync
+/build/*.packages
+/build/.lock
+
+# ---- 解包的工具链（由 BUILD.md 说明的方法重新获取）----
+/tools/rootfs/
+/tools/lbroot/
+/tools/dbootstrap/
+/tools/shim/
+/tools/*.deb
+
+# ---- 本地缓存 / 探针 / 临时目录 ----
+/.aptcache/
+/.pkgidx/
+/.verify/
+/.verify-tools/
+/.tmp-net/
+/.tmp-probe/
+/.tmp-*/
+
+# ---- 下载的软件包与镜像 ----
+/*.deb
+/*.iso
+/*.img
+/*.tar.gz
+
+# ---- 团队运行时状态（非工程内容）----
+/.agent-teams/
+
+# ---- 编辑器 / 系统杂项 ----
+*.swp
+*~
+.DS_Store
+*.log

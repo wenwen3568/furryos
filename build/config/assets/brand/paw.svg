@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <title>FurryOS paw mark</title>
+  <g fill="#1A6FD4">
+    <!-- main pad -->
+    <path d="M128 150c32 0 58 21 58 45 0 16-15 27-33 27h-50c-18 0-33-11-33-27 0-24 26-45 58-45z"/>
+    <!-- toes: plain ellipses, no transforms (renderer-safe) -->
+    <ellipse cx="50" cy="108" rx="25" ry="32"/>
+    <ellipse cx="97" cy="62" rx="24" ry="32"/>
+    <ellipse cx="159" cy="62" rx="24" ry="32"/>
+    <ellipse cx="206" cy="108" rx="25" ry="32"/>
+  </g>
+</svg>

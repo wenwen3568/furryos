@@ -1,0 +1,19 @@
+# FurryOS plasma desktop theme configuration.
+#
+# This theme is a Breeze *derivative*: it keeps Breeze's own widget SVG set
+# (installed by the system `breeze` package) and only overrides the values
+# below, so no upstream brand asset is bundled or referenced.
+#
+# [Wallpaper] points the desktop at the FurryOS wallpaper package so a newly
+# created user gets the paw wallpaper without any manual step.
+[Wallpaper]
+defaultWallpaperTheme=FurryOS
+defaultFileSuffix=.png
+defaultWidth=1920
+defaultHeight=1080
+
+[ContrastEffect]
+enabled=true
+contrast=0.3
+intensity=1.9
+saturation=1.9

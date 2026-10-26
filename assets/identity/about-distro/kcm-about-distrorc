@@ -1,0 +1,26 @@
+[General]
+# FurryOS 图形界面「关于本机」覆盖
+# 安装位置：/etc/xdg/kcm-about-distrorc
+#
+# 该文件被 KInfoCenter / 系统设置「关于本机」模块读取（XDG_CONFIG_DIRS 中的
+# kcm-about-distrorc）。KInfoCenter 的实现（plasma/kinfocenter Modules/about-distro/src/main.cpp）
+# 读取顺序为：
+#   LogoPath  -> 缺省取 /etc/os-release 的 LOGO 字段经图标主题解析
+#   Name      -> 缺省取 /etc/os-release 的 NAME
+#   Version   -> 缺省取 /etc/os-release 的 VERSION 或 VERSION_ID
+#   Website   -> 缺省取 /etc/os-release 的 HOME_URL
+#   Variant   -> 缺省取 /etc/os-release 的 VARIANT
+#
+# 我们显式写死 Name/Version/Website，使「关于本机」不再依赖 os-release 的解析结果，
+# 同时 LogoPath 指向 FurryOS 爪印 logo（assets/brand/paw.svg 的安装副本），
+# 避免落到上游的 LOGO=ubuntu-logo。
+#
+# 参考：https://develop.kde.org/docs/administration/kinfocenter/
+#       https://lxr.kde.org/source/plasma/kinfocenter/Modules/about-distro/README?v=kf5-qt5
+
+LogoPath=/usr/share/about-distro/furryos-logo.svg
+Website=https://furryos.example.org/
+Name=FurryOS
+Version=24.04 LTS
+Variant=Plasma Desktop
+UseOSReleaseVersion=true

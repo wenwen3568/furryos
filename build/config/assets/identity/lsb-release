@@ -1,0 +1,27 @@
+# FurryOS 兼容层：/etc/lsb-release
+#
+# 兼容性要求（见 docs/CONTRACTS.md「成员一」表）：
+#   - DISTRIB_DESCRIPTION 可含 Ubuntu 字样（上游来源说明，属允许范围）；
+#   - NAME 系列字段一律为 FurryOS。
+#
+# 上游 Ubuntu 24.04 原值为：
+#   DISTRIB_ID=Ubuntu
+#   DISTRIB_RELEASE=24.04
+#   DISTRIB_CODENAME=noble
+#   DISTRIB_DESCRIPTION="Ubuntu 24.04 LTS"
+#
+# 重要副作用说明：
+#   /etc/update-motd.d/00-header 会 `source /etc/lsb-release` 并用
+#   DISTRIB_DESCRIPTION 打印 "Welcome to %s (...)"。
+#   若 DISTRIB_DESCRIPTION 含 Ubuntu，动态 MOTD 首行会重新暴露 Ubuntu。
+#   因此本文件额外提供 DISTRIB_NAME / DISTRIB_VERSION / DISTRIB_RELEASE_NAME
+#   三个 FurryOS 字段，供我们自己的 update-motd.d/00-header 使用；
+#   注入时同时替换 00-header，使其读取 FurryOS 字段而不是 DISTRIB_DESCRIPTION。
+
+DISTRIB_ID=FurryOS
+DISTRIB_RELEASE=24.04
+DISTRIB_CODENAME=noble
+DISTRIB_DESCRIPTION="FurryOS 24.04 LTS (based on Ubuntu)"
+DISTRIB_NAME=FurryOS
+DISTRIB_VERSION=24.04
+DISTRIB_RELEASE_NAME=FurryOS

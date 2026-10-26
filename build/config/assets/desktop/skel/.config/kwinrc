@@ -1,0 +1,45 @@
+# FurryOS per-user KWin defaults (/etc/skel/.config/kwinrc).
+#
+# OWNERSHIP (docs/CONTRACTS.md conflict table):
+#   motion-effects -> [Plugins] mouseclickEnabled + [Effect-mouseclick] appearance
+#   desktop-visual  -> merges them here, owning the file's layout
+#
+# WHY THE APPEARANCE SECTION MUST LIVE HERE, NOT ONLY IN kdeglobals
+# ------------------------------------------------------------------
+# Verified against the actual noble binaries (KWin 5.27.11-0ubuntu3) with
+# `strings -el`, not assumed:
+#
+#   libkwin.so.5.27.11
+#     - reads "kdeglobals" only for the group "Colors:Window" (the colour
+#       scheme); there is NO "Effects" group string at all in this library
+#       (grep -cx "Effects" -> 0), so kdeglobals [Effects] Click is never
+#       read by KWin itself;
+#     - reads the plugin switch from group "Plugins" + key suffix "Enabled"
+#       in file "kwinrc" (effectloader.cpp builds "<effectName>Enabled");
+#     - builds the per-effect appearance group from the template "Effect-%1"
+#       -> "Effect-mouseclick".
+#   kwin_mouseclick_config.so  (declared as X-KDE-ConfigModule by
+#     /usr/share/kwin/builtin-effects/kwin4_effect_mouseclick/metadata.json)
+#     - contains the group "Effect-mouseclick" and the keys Color1, Color2,
+#       Color3, LineWidth, RingCount, RingLife, RingSize, ShowText;
+#     - names no config file explicitly, so it goes through KConfig's default
+#       for the "kwin" component, i.e. kwinrc.
+#
+# Consequence: writing the ring colours only into kdeglobals risks KWin
+# falling back to its built-in default blue. kwinrc is therefore the
+# authoritative location for BOTH the switch and the appearance, and that is
+# where this file puts them. kdeglobals keeps its copy as a belt-and-braces
+# mirror for Plasma-side tooling.
+
+[Plugins]
+mouseclickEnabled=true
+
+[Effect-mouseclick]
+Color1=26,111,212
+Color2=15,76,140
+Color3=10,53,104
+LineWidth=3
+RingCount=2
+RingLife=250
+RingSize=32
+ShowText=false

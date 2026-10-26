@@ -1,0 +1,35 @@
+# FurryOS boot menu (syslinux/isolinux) overrides.
+#
+# live-build copies files from config/bootloaders/syslinux_common and
+# config/bootloaders/isolinux OVER the upstream templates in
+# /usr/share/live/build/bootloaders/{syslinux_common,isolinux}, so any file
+# placed here replaces the upstream one entirely.
+#
+# Files placed here:
+#   live.cfg.in    - the boot entries. Upstream labels say
+#                    "Live system (amd64)" / "Live system (amd64 fail-safe
+#                    mode)". Both are rewritten to FurryOS branding.
+#   stdmenu.cfg    - the menu chrome (colours, title row). The colour scheme
+#                    is switched to the FurryOS blue palette from
+#                    assets/brand/brand-tokens.md.
+#   menu.cfg       - the top-level menu title.
+#
+# NOTE: menu title text also comes from binary_syslinux's _PROJECT variable
+# ("Debian GNU/Linux") which is substituted into splash.svg, and from the
+# grub menu entries "Live system (amd64)". Those are handled by
+# config/hooks/normal/*.chroot hooks that patch the generated files in the
+# binary/ tree (see hooks/6210-brand-boot-menu.*), because live-build offers
+# no config knob for them.
+
+label live-@FLAVOUR@
+	menu label ^FurryOS Live
+	menu default
+	linux @LINUX@
+	initrd @INITRD@
+	append @APPEND_LIVE@
+
+label live-@FLAVOUR@-failsafe
+	menu label FurryOS Live (^fail-safe mode)
+	linux @LINUX@
+	initrd @INITRD@
+	append @APPEND_LIVE_FAILSAFE@

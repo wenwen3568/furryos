@@ -1,0 +1,90 @@
+#!/bin/sh
+
+# FurryOS 6000 - stage the four asset layers into the chroot.
+#
+# WHY THIS HOOK EXISTS
+# -------------------
+# live-build bind-mounts the build's `config` directory read-only into the
+# chroot at /live-build/config while hooks run (see lb chroot_hooks). The
+# workspace asset tree at /root/furryos/assets is NOT visible inside the
+# chroot, because the chroot only sees that one bind mount.
+#
+# To get the four layers' output into the target filesystem we therefore need
+# a two-step approach:
+#   1. this hook (runs first, lowest 6xxx number) copies the assets from the
+#      bind-mounted config tree into a staging directory inside the chroot,
+#   2. the later 6xxx hooks install them into their final locations.
+#
+# The assets are not stored under config/ directly (that would make them part
+# of the ISO's config tree); instead the integration script
+# `tools/sync-assets.sh` copies assets/ -> config/assets/ before the build.
+# That keeps the four layers' source of truth in assets/ and the build tree
+# self-contained.
+#
+# PATHS
+# -----
+#   source  /live-build/config/assets/...   <- the bind-mounted build config
+#   staging /opt/furryos/assets/...         <- written by this hook, read by
+#                                             6010/6110/6120/6130, removed by
+#                                             8990-furryos-cleanup
+#
+# NOTE: this hook is the ONLY place that knows both paths. The per-layer hooks
+# must use FURRYOS_ASSETS (= the staging directory) and never the bind mount,
+# because the bind mount disappears when the hooks finish.
+#
+# FAILURE MODE
+# ------------
+# This hook deliberately exits NON-ZERO when the asset layers are absent.
+# An earlier version exited 0, which let a missing `tools/sync-assets.sh` run
+# produce an ISO with no branding at all while still reporting build success.
+
+set -e
+
+. /live-build/config/hooks/normal/furryos-common.sh
+
+# The bind mount is the ONLY source available inside the chroot.
+SOURCE="/live-build/config/assets"
+STAGING="/opt/furryos/assets"
+
+furryos_log "Staging FurryOS asset layers from ${SOURCE} into ${STAGING}"
+
+if [ ! -d "${SOURCE}" ]
+then
+	furryos_warn "${SOURCE} not found"
+	furryos_warn "Run tools/sync-assets.sh before 'lb build' to populate config/assets/."
+	exit 1
+fi
+
+install -d -m 0755 "${STAGING}"
+
+MISSING=0
+
+for LAYER in identity desktop sddm effects brand; do
+	if [ -d "${SOURCE}/${LAYER}" ]
+	then
+		cp -a "${SOURCE}/${LAYER}" "${STAGING}/${LAYER}"
+		furryos_log "staged layer: ${LAYER}"
+	else
+		furryos_warn "asset layer missing: ${LAYER}"
+		MISSING=$(( MISSING + 1 ))
+	fi
+done
+
+# Assert that the staging directory really is populated, so a silent partial
+# sync cannot ship an unbranded image.
+for LAYER in identity desktop sddm effects brand; do
+	if [ ! -d "${STAGING}/${LAYER}" ]
+	then
+		echo "${FURRYOS_LOG_TAG} ERROR: layer ${LAYER} is absent after staging" >&2
+		MISSING=$(( MISSING + 1 ))
+	fi
+done
+
+if [ "${MISSING}" -ne 0 ]
+then
+	echo "${FURRYOS_LOG_TAG} ERROR: ${MISSING} asset layer(s) missing - aborting rather" \
+		"than shipping an unbranded image." >&2
+	exit 1
+fi
+
+furryos_log "Asset staging complete: $(ls "${STAGING}" | tr '\n' ' ')"

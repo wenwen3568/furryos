@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=FurryOS
+Description=FurryOS boot splash (blue/white with paw mark)
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/furryos
+ScriptFile=/usr/share/plymouth/themes/furryos/furryos.script

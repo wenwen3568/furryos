@@ -1,0 +1,41 @@
+# FurryOS look-and-feel defaults.
+#
+# Applied by Plasma when the FurryOS global theme is selected, and also used by
+# /etc/skel/.config/kdeglobals (desktop-visual owns that file) so the first
+# login matches the global theme exactly.
+#
+# Every value here points at something that ships with the system image:
+#   widgetStyle=breeze      -> kde-style-breeze (in the package list)
+#   Theme=breeze            -> breeze (plasma desktop theme)
+#   Theme=breeze_cursors    -> breeze-cursor-theme
+# No upstream brand asset is pulled in: only Breeze's own *layout*, recoloured
+# through the FurryOS colour scheme and the FurryOS wallpaper.
+
+[kdeglobals][KDE]
+widgetStyle=breeze
+
+[kdeglobals][General]
+ColorScheme=FurryOS
+AccentColor=26,111,212
+
+[kdeglobals][Icons]
+Theme=breeze
+
+[kdeglobals][MainToolbarIcons]
+Size=16
+
+[kdeglobals][ToolbarIcons]
+Size=16
+
+[plasmarc][Theme]
+name=breeze
+
+[kwinrc][org.kde.kdecoration2]
+library=org.kde.breeze
+theme=Breeze
+
+[kcminputrc][Mouse]
+cursorTheme=breeze_cursors
+
+[Wallpaper]
+Image=FurryOS

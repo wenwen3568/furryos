@@ -1,0 +1,22 @@
+# FurryOS - 静态欢迎信息（登录后显示）
+# 说明：
+#   - /etc/motd 是静态欢迎信息；动态部分由 /etc/update-motd.d/ 下的脚本生成，
+#     通过 PAM 的 pam_motd.so 合并显示（见 /etc/pam.d/login、/etc/pam.d/sshd）。
+#   - 本文件由 FurryOS 系统身份层提供；配套的 update-motd.d 脚本见
+#     assets/identity/update-motd.d/，注入时会一并替换掉会暴露上游名称的脚本。
+#   - 本文件内容不得出现 Ubuntu 字样（品牌合规底线，见 assets/brand/brand-tokens.md）。
+#
+# 可使用 \n \l \m \s \r \v 等转义（仅静态部分有效，动态脚本输出原文）。
+
+  ___                 _        ___  ___
+ / __|_  _ ___ _ _ __| |___   / _ \/ __|
+| (_ | || / -_) '_(_-< / _ \_| (_) \__ \
+ \___|\_,_\___|_| /__/_\___(_)\___/|___/
+
+Welcome to FurryOS 24.04 LTS
+
+ * Documentation:  https://furryos.example.org/docs
+ * Support:        https://furryos.example.org/support
+
+FurryOS is a community desktop distribution built on a Debian-family LTS base.
+FurryOS comes with ABSOLUTELY NO WARRANTY, to the extent permitted by applicable law.

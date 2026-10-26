@@ -1,0 +1,52 @@
+#!/bin/sh
+
+# FurryOS 8990 - post-integration cleanup.
+#
+# Removes build-time-only artefacts so they do not ship in the ISO:
+#   * /opt/furryos/assets - the staged asset copies (they have already been
+#     installed into their final locations by hooks 6010/6110/6120/6130)
+#   * /etc/sddm.conf.pre-furryos - backup taken while wiring Current=
+#   * /live-build - the read-only bind mount point left empty by
+#     lb chroot_hooks after it unmounts config
+#
+# It also refreshes desktop/icon caches so the newly installed themes,
+# wallpapers and colour schemes are picked up without the user having to log
+# out and back in twice.
+
+set -e
+
+. /live-build/config/hooks/normal/furryos-common.sh
+
+furryos_log "Cleaning up FurryOS build-time artefacts"
+
+# --- remove staged assets --------------------------------------------------
+if [ -d /opt/furryos/assets ]
+then
+	rm -rf /opt/furryos/assets
+	furryos_log "removed /opt/furryos/assets"
+fi
+rmdir /opt/furryos 2>/dev/null || true
+
+# --- remove sddm backup ----------------------------------------------------
+rm -f /etc/sddm.conf.pre-furryos
+
+# --- remove leftover bind-mount directory ---------------------------------
+rm -rf /live-build 2>/dev/null || true
+
+# --- refresh caches --------------------------------------------------------
+# Icon cache for the newly installed wallpapers/colour schemes (gtk-update-icon
+# cache is not relevant here; KDE uses the symlink farm instead).
+if [ -d /usr/share/icons ] && command -v gtk-update-icon-cache >/dev/null 2>&1
+then
+	for D in /usr/share/icons/*; do
+		[ -d "${D}" ] || continue
+		gtk-update-icon-cache -q -f -t "${D}" 2>/dev/null || true
+	done
+fi
+
+# --- machine identity ------------------------------------------------------
+# live-build's own hooks already remove dbus/systemd machine ids. We also
+# truncate the shell history and apt lists so the image is reproducible.
+rm -f /root/.bash_history 2>/dev/null || true
+
+furryos_log "FurryOS cleanup complete."

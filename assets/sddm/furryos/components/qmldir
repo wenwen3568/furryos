@@ -1,0 +1,6 @@
+module components
+singleton Theme 1.0 Theme.qml
+FurryButton 1.0 FurryButton.qml
+FurryField 1.0 FurryField.qml
+PawBackground 1.0 PawBackground.qml
+PawMark 1.0 PawMark.qml

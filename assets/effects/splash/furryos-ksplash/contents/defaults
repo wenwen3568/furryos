@@ -1,0 +1,14 @@
+[kdeglobals][General]
+ColorScheme=FurryOS
+
+[kdeglobals][Icons]
+Theme=breeze
+
+[plasmarc][Theme]
+name=default
+
+[Wallpaper]
+Image=Next
+
+[KSplash]
+Theme=org.furryos.desktop

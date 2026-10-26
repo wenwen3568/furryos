@@ -1,0 +1,245 @@
+#!/bin/sh
+
+# FurryOS 6010 - system identity layer (assets/identity -> target system).
+#
+# Owner of the affected files: brand-identity (docs/CONTRACTS.md).
+# This hook only performs the injection; it does not define the content.
+#
+# Installed files (CONTRACTS.md 成员一 table + brand-identity's addenda):
+#
+#   /usr/lib/os-release                   real file; /etc/os-release is a
+#                                         symlink to it in Ubuntu base-files
+#   /etc/issue                            local console login banner
+#   /etc/issue.net                        SSH remote login banner (no Ubuntu)
+#   /etc/motd                             post-login welcome message
+#   /etc/legal                            shown once per user by pam_motd.so
+#   /etc/lsb-release                      compatibility layer
+#   /etc/ssh/sshd_config.d/*.conf         Banner /etc/issue.net
+#   /etc/update-motd.d/{00-header,10-help-text,20-furryos}
+#   /etc/default/motd-news                ENABLED=0
+#   /etc/systemd/system/motd-news.{timer,service}  masked
+#   /etc/xdg/kcm-about-distrorc           KInfoCenter "About this system"
+#   /usr/share/about-distro/furryos-logo.svg
+#   /usr/share/icons/hicolor/scalable/apps/furryos-logo.svg  (LOGO= icon name)
+#
+# Hardening required by CONTRACTS.md and brand-identity's report:
+#   * REMOVE the upstream update-motd.d scripts that re-expose Ubuntu
+#     (00-header, 10-help-text, 50-motd-news, ...). They are dpkg conffiles,
+#     so chmod a-x alone is not enough.
+#   * neutralise motd-news at the systemd level too (ENABLED=0 alone is not
+#     enough: motd-news.timer still fires and a cached file would be printed).
+#   * when sweeping for leftover Ubuntu references, inspect ONLY non-comment
+#     lines - brand-identity's own scripts cite the upstream name in
+#     maintenance notes and must not be deleted by that check.
+
+set -e
+
+. /live-build/config/hooks/normal/furryos-common.sh
+
+# Asset staging directory.
+#
+# NOTE (brand-identity): do NOT rely on ${FURRYOS_ASSETS} here.
+#   6000-stage-furryos-assets.chroot stages the layers into
+#   /opt/furryos/assets, but furryos-common.sh historically defined
+#   FURRYOS_ASSETS=/live-build/assets, which nothing ever creates. When the two
+#   disagreed, 6000 hit its `[ ! -d ... ]` guard, warned and exited 0, so every
+#   6xxx hook then read a non-existent SRC and silently skipped its work - the
+#   build "succeeded" with no branding at all.
+#   Resolving the path locally, with an explicit existence check, keeps this
+#   hook correct regardless of which value furryos-common.sh carries.
+_IDENTITY_ASSET_DIRS="/opt/furryos/assets/identity /live-build/assets/identity"
+
+SRC=""
+for _CANDIDATE in ${_IDENTITY_ASSET_DIRS}
+do
+	if [ -d "${_CANDIDATE}" ]
+	then
+		SRC="${_CANDIDATE}"
+		break
+	fi
+done
+
+furryos_log "Installing system identity layer from ${SRC:-<not found>}"
+
+if [ -z "${SRC}" ]
+then
+	echo "${FURRYOS_LOG_TAG} ERROR: identity assets not staged (looked in: ${_IDENTITY_ASSET_DIRS})" >&2
+	echo "${FURRYOS_LOG_TAG} ERROR: run tools/sync-assets.sh and check 6000-stage-furryos-assets.chroot" >&2
+	exit 1
+fi
+
+# ------------------------------------------------------------ /etc/os-release
+# In Ubuntu (base-files) /etc/os-release is a SYMLINK to ../usr/lib/os-release.
+# Write the real file and re-create the symlink so `dpkg -S /etc/os-release`
+# still resolves to base-files and upgrades behave normally.
+if [ -e "${SRC}/os-release" ]
+then
+	install -d -m 0755 /usr/lib
+	furryos_install_file "${SRC}/os-release" /usr/lib/os-release 0644
+
+	if [ -L /etc/os-release ]
+	then
+		: # already a symlink; nothing to clean up
+	elif [ -e /etc/os-release ]
+	then
+		rm -f /etc/os-release
+	fi
+	ln -sf ../usr/lib/os-release /etc/os-release
+	furryos_log "installed /usr/lib/os-release; /etc/os-release -> ../usr/lib/os-release"
+else
+	furryos_warn "identity/os-release missing"
+fi
+
+# ------------------------------------------------------------------ banners
+for F in issue issue.net motd legal; do
+	if [ -e "${SRC}/${F}" ]
+	then
+		furryos_install_file "${SRC}/${F}" "/etc/${F}" 0644
+		furryos_log "installed /etc/${F}"
+	else
+		furryos_warn "identity/${F} missing"
+	fi
+done
+
+# --------------------------------------------------------------- lsb-release
+if [ -e "${SRC}/lsb-release" ]
+then
+	furryos_install_file "${SRC}/lsb-release" /etc/lsb-release 0644
+	furryos_log "installed /etc/lsb-release"
+fi
+
+# ---------------------------------------------------------------- SSH banner
+if [ -e "${SRC}/sshd_banner.conf" ]
+then
+	install -d -m 0755 /etc/ssh/sshd_config.d
+	# openssh-server ships /etc/ssh/sshd_config containing
+	#   Include /etc/ssh/sshd_config.d/*.conf
+	# so a drop-in is enough and survives package upgrades.
+	furryos_install_file "${SRC}/sshd_banner.conf" \
+		/etc/ssh/sshd_config.d/010-furryos-banner.conf 0644
+	furryos_log "installed /etc/ssh/sshd_config.d/010-furryos-banner.conf"
+else
+	furryos_warn "identity/sshd_banner.conf missing; SSH banner not configured"
+fi
+
+# ---------------------------------------------------- update-motd.d management
+install -d -m 0755 /etc/update-motd.d
+
+if [ -d /etc/update-motd.d ]
+then
+	# 1. remove the upstream scripts that re-expose Ubuntu. They are dpkg
+	#    conffiles of base-files / motd-news-config, so removal is the clean
+	#    fix; merely dropping the executable bit would leave the content in
+	#    place and confuse `dpkg -V`.
+	for SCRIPT in 00-header 10-help-text 50-motd-news 51-cloudguest \
+	              70-available-updates 90-updates-available \
+	              91-contract-ua-eligible 95-hwe-eol 97-overlayroot \
+	              98-fsck-at-boot 98-reboot-required; do
+		if [ -e "/etc/update-motd.d/${SCRIPT}" ]
+		then
+			rm -f "/etc/update-motd.d/${SCRIPT}"
+			furryos_log "removed upstream motd script /etc/update-motd.d/${SCRIPT}"
+		fi
+	done
+
+	# 2. install brand-identity's replacements at 0755
+	if [ -d "${SRC}/update-motd.d" ]
+	then
+		for SCRIPT in "${SRC}"/update-motd.d/*; do
+			[ -e "${SCRIPT}" ] || continue
+			NAME="$(basename "${SCRIPT}")"
+			cp "${SCRIPT}" "/etc/update-motd.d/${NAME}"
+			chmod 0755 "/etc/update-motd.d/${NAME}"
+			furryos_log "installed /etc/update-motd.d/${NAME} (0755)"
+		done
+	fi
+
+	# 3. belt-and-braces sweep: neutralise any REMAINING script whose
+	#    NON-COMMENT lines mention Ubuntu. Comment lines are deliberately
+	#    ignored, because brand-identity's own scripts cite the upstream
+	#    name in maintenance notes.
+	for SCRIPT in /etc/update-motd.d/*; do
+		[ -f "${SCRIPT}" ] || continue
+		if grep -v '^[[:space:]]*#' "${SCRIPT}" 2>/dev/null | grep -qi 'ubuntu'
+		then
+			chmod a-x "${SCRIPT}" 2>/dev/null || true
+			furryos_log "neutralised (non-comment Ubuntu reference): ${SCRIPT}"
+		fi
+	done
+fi
+
+# ---------------------------------------------------------------- motd-news
+# ENABLED=0 alone is not sufficient: motd-news.timer still fires
+# (OnStartupSec=1min, then daily at 00:00 and 12:00) and any remaining reader
+# would cat /var/cache/motd-news. Mask the units and clear the cache.
+if [ -e "${SRC}/motd-news" ]
+then
+	furryos_install_file "${SRC}/motd-news" /etc/default/motd-news 0644
+	furryos_log "installed /etc/default/motd-news (ENABLED=0)"
+fi
+
+install -d -m 0755 /etc/systemd/system
+ln -sf /dev/null /etc/systemd/system/motd-news.timer
+ln -sf /dev/null /etc/systemd/system/motd-news.service
+furryos_log "masked motd-news.timer and motd-news.service"
+
+rm -f /var/cache/motd-news 2>/dev/null || true
+rm -rf /var/cache/motd-news-* 2>/dev/null || true
+
+# ------------------------------------------ KInfoCenter "About this system"
+# kinfocenter's about-distro KCM reads kcm-about-distrorc from XDG_CONFIG_DIRS
+# via KSharedConfig::openConfig. Name/Version/Website otherwise fall back to
+# os-release (already FurryOS), but writing them explicitly removes any doubt
+# and lets LogoPath point at a real file instead of resolving the LOGO= icon
+# name through the icon theme.
+install -d -m 0755 /usr/share/about-distro
+install -d -m 0755 /etc/xdg
+
+if [ -e "${SRC}/about-distro/kcm-about-distrorc" ]
+then
+	furryos_install_file "${SRC}/about-distro/kcm-about-distrorc" \
+		/etc/xdg/kcm-about-distrorc 0644
+	furryos_log "installed /etc/xdg/kcm-about-distrorc"
+else
+	furryos_warn "identity/about-distro/kcm-about-distrorc missing"
+fi
+
+# Both logo layouts are installed:
+#   * ${SRC}/about-distro/furryos-logo.svg -> /usr/share/about-distro/furryos-logo.svg
+#     (the layout CONTRACTS.md asks for; referenced by kcm-about-distrorc)
+#   * ${SRC}/furryos-logo.svg             -> /usr/share/about-distro/logo.svg
+#     (generic alias so the plain name also resolves)
+if [ -e "${SRC}/about-distro/furryos-logo.svg" ]
+then
+	furryos_install_file "${SRC}/about-distro/furryos-logo.svg" \
+		/usr/share/about-distro/furryos-logo.svg 0644
+	furryos_log "installed /usr/share/about-distro/furryos-logo.svg"
+fi
+
+if [ -e "${SRC}/furryos-logo.svg" ]
+then
+	furryos_install_file "${SRC}/furryos-logo.svg" \
+		/usr/share/about-distro/logo.svg 0644
+	furryos_log "installed /usr/share/about-distro/logo.svg"
+elif [ -e "${SRC}/../brand/paw.svg" ]
+then
+	furryos_install_file "${SRC}/../brand/paw.svg" \
+		/usr/share/about-distro/logo.svg 0644
+	furryos_log "installed brand paw as /usr/share/about-distro/logo.svg"
+else
+	furryos_warn "no logo asset found for /usr/share/about-distro/logo.svg"
+fi
+
+# os-release's LOGO= is an ICON-THEME name, not a path: KOSRelease::logo()
+# resolves it through the icon theme, NOT through /usr/share/about-distro.
+# Leaving LOGO=furryos-logo without a matching icon would silently fall back
+# to the upstream icon, so also drop a hicolor icon under that name.
+if [ -e "${SRC}/about-distro/furryos-logo.svg" ]
+then
+	install -d -m 0755 /usr/share/icons/hicolor/scalable/apps
+	ln -sf /usr/share/about-distro/furryos-logo.svg \
+		/usr/share/icons/hicolor/scalable/apps/furryos-logo.svg 2>/dev/null || true
+	furryos_log "linked hicolor icon furryos-logo.svg"
+fi
+
+furryos_log "System identity layer installed."

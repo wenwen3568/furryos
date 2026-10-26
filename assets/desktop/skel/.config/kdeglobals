@@ -1,0 +1,76 @@
+# FurryOS per-user KDE defaults (/etc/skel/.config/kdeglobals).
+#
+# OWNERSHIP (docs/CONTRACTS.md conflict table):
+#   desktop-visual   -> colour scheme, accent, widget style, icons, wallpaper
+#   motion-effects   -> [Effects] + [Effect-mouseclick] (click effect)
+# Merged into this single file by desktop-visual, who is the sole owner.
+#
+# This file is copied to /etc/skel/.config/kdeglobals by live-build, so every
+# account created after installation (and the live-session user) already has
+# the FurryOS look before any setting is touched.
+#
+# The values mirror look-and-feel/.../contents/defaults so that the global
+# theme and the per-user defaults can never disagree.
+
+[General]
+ColorScheme=FurryOS
+AccentColor=26,111,212
+
+[Colors:View]
+BackgroundAlternate=234,242,255
+BackgroundNormal=255,255,255
+
+[Colors:Window]
+BackgroundAlternate=214,230,247
+BackgroundNormal=234,242,255
+
+[Icons]
+Theme=breeze
+
+[KDE]
+widgetStyle=breeze
+
+[MainToolbarIcons]
+Size=16
+
+[ToolbarIcons]
+Size=16
+
+# --- wallpaper -------------------------------------------------------------
+# The FurryOS wallpaper package (assets/desktop/wallpapers/FurryOS) is installed
+# to /usr/share/wallpapers/FurryOS, so the package name alone is enough.
+[Wallpaper]
+Image=FurryOS
+
+# --- click effect (merged from assets/effects/click-effect/kdeglobals-effects.conf)
+#
+# Provided by motion-effects (交互动效层), merged here by desktop-visual, who
+# owns /etc/skel/.config/kdeglobals. Do not edit this section without
+# coordinating with motion-effects.
+#
+# IMPORTANT — kwinrc is the authoritative location for the click effect.
+# Verified with `strings -el` against noble's libkwin.so.5.27.11: KWin reads
+# kdeglobals only for the "Colors:Window" group and has no "Effects" group at
+# all, while it reads the plugin switch from kwinrc [Plugins] "<name>Enabled"
+# and the appearance from kwinrc "Effect-%1" (= Effect-mouseclick). So the
+# switch and the ring colours are written to
+# /etc/skel/.config/kwinrc as the primary copy; the [Effects]/[Effect-mouseclick]
+# sections below are a Plasma-side mirror for tooling that looks at kdeglobals.
+#
+# The ring colours are the FurryOS brand palette (assets/brand/brand-tokens.md):
+#   left button    furryos-blue        #1A6FD4 -> 26,111,212
+#   middle button  furryos-blue-dark   #0F4C8C -> 15,76,140
+#   right button   furryos-blue-deep   #0A3568 -> 10,53,104
+# RingLife=250ms keeps the feedback inside the 200-300ms brand motion budget.
+[Effects]
+Click=true
+
+[Effect-mouseclick]
+Color1=26,111,212
+Color2=15,76,140
+Color3=10,53,104
+LineWidth=3
+RingCount=2
+RingLife=250
+RingSize=32
+ShowText=false

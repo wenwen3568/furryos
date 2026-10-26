@@ -1,0 +1,22 @@
+{
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "FurryOS Build Team"
+            }
+        ],
+        "Category": "",
+        "Description": "FurryOS blue and white look and feel with paw mark",
+        "Id": "org.furryos.desktop",
+        "License": "GPLv2+",
+        "Name": "FurryOS",
+        "ServiceTypes": [
+            "Plasma/LookAndFeel"
+        ],
+        "Version": "2.0",
+        "Website": "https://furryos.example"
+    },
+    "Keywords": "Desktop;Workspace;Appearance;Look and Feel;Logout;Lock;Suspend;Shutdown;Hibernate;FurryOS;",
+    "X-Plasma-APIVersion": "2",
+    "X-Plasma-MainScript": "defaults"
+}

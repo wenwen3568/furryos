@@ -1,0 +1,13 @@
+# FurryOS 禁用 motd-news 动态新闻服务
+# 安装位置：/etc/default/motd-news
+#
+# 上游 motd-news-config 包的默认值为 ENABLED=1，URLS="https://motd.ubuntu.com"。
+# 即使我们删掉了 /etc/update-motd.d/50-motd-news 脚本，systemd 的
+# motd-news.timer 仍会按计划触发（OnStartupSec=1min / 每天 00,12 点），
+# 并且 50-motd-news 在缓存命中时会直接 cat /var/cache/motd-news 打印内容。
+# 因此这里显式关闭（ENABLED=0），双保险，确保登录后不出现 Ubuntu 新闻。
+
+ENABLED=0
+URLS=""
+WAIT=5
+CACHE="/var/cache/motd-news"

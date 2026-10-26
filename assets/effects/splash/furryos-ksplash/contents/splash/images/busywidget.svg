@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <title>FurryOS progress indicator (furryos-blue arc)</title>
+  <g fill="none" stroke="#1A6FD4" stroke-width="6" stroke-linecap="round">
+    <path d="M 32 8 A 24 24 0 0 1 56 32" opacity="1"/>
+    <path d="M 56 32 A 24 24 0 0 1 32 56" opacity="0.6"/>
+    <path d="M 32 56 A 24 24 0 0 1 8 32" opacity="0.35"/>
+    <path d="M 8 32 A 24 24 0 0 1 32 8" opacity="0.15"/>
+  </g>
+</svg>

@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+  <title>FurryOS default wallpaper</title>
+  <defs>
+    <linearGradient id="furryos-bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0A3568"/>
+      <stop offset="0.5" stop-color="#1A6FD4"/>
+      <stop offset="1" stop-color="#EAF2FF"/>
+    </linearGradient>
+    <g id="furryos-paw"><path d="M128 150c32 0 58 21 58 45 0 16-15 27-33 27h-50c-18 0-33-11-33-27 0-24 26-45 58-45z"/><ellipse cx="50" cy="108" rx="25" ry="32"/><ellipse cx="97" cy="62" rx="24" ry="32"/><ellipse cx="159" cy="62" rx="24" ry="32"/><ellipse cx="206" cy="108" rx="25" ry="32"/></g>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#furryos-bg)"/>
+  <use href="#furryos-paw" x="40" y="20" width="640" height="640" fill="#FFFFFF" opacity="0.18"/>
+  <use href="#furryos-paw" x="70" y="660" width="420" height="420" fill="#1A6FD4" opacity="0.3"/>
+  <use href="#furryos-paw" x="530" y="660" width="320" height="320" fill="#1A6FD4" opacity="0.45"/>
+  <use href="#furryos-paw" x="890" y="660" width="230" height="230" fill="#1A6FD4" opacity="0.65"/>
+  <use href="#furryos-paw" x="1160" y="660" width="160" height="160" fill="#1A6FD4" opacity="0.88"/>
+</svg>

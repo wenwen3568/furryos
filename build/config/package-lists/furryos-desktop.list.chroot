@@ -1,0 +1,76 @@
+# FurryOS desktop package list (injected into live-build chroot)
+# KDE Plasma desktop + SDDM display manager + FurryOS branding prerequisites
+
+## Core desktop
+kde-plasma-desktop
+plasma-workspace
+plasma-desktop
+sddm
+sddm-theme-breeze
+
+## KDE applications and settings
+systemsettings
+konsole
+dolphin
+kde-config-sddm
+kinfocenter
+
+## Look and feel infrastructure (note: plasma-look-and-feel is NOT shipped in
+## Ubuntu noble's archive; the Breeze global theme + color-schemes provide the
+## look-and-feel layer instead)
+##
+## NOTE: there is no package literally named "color-schemes" in Ubuntu noble -
+## that is a Debian-ism. On noble the Breeze colour schemes
+## (/usr/share/color-schemes/Breeze*.colors) are shipped by kde-style-breeze,
+## which is already listed below. Verified against the noble package index:
+##   kde-style-breeze_5.27.11-0ubuntu3 -> ./usr/share/color-schemes/Breeze{Light,Dark,Classic}.colors
+breeze
+breeze-icon-theme
+kde-style-breeze
+
+## Fonts and rendering
+fonts-noto-color-emoji
+fontconfig
+
+## Base tooling needed for branding hooks and verification
+ca-certificates
+curl
+wget
+less
+sudo
+locales
+console-setup
+kbd
+
+## Network (SSH login banner verification requirement)
+openssh-server
+openssh-client
+
+## SDDM theme QML runtime dependencies (reported by sddm-experience, t3)
+##
+## The FurryOS login theme is pure QtQuick 2 + QtQml + QtQuick.Layouts and
+## does NOT use org.kde.plasma.* or SddmComponents, so these are the only
+## real runtime requirements beyond the `sddm` package itself:
+##
+##   qml-module-qtquick2 / libqt5quick5  - without them the whole theme fails
+##                                        to load and SDDM silently falls back
+##                                        to the default theme
+##   qml-module-qtquick-layouts          - Main.qml uses RowLayout/ColumnLayout
+##   qt5-image-formats                   - provides libqsvg.so. The paw print is
+##                                        an SVG; WITHOUT this package the paw
+##                                        silently disappears (no error), which
+##                                        is the hardest failure to diagnose.
+##
+## On noble most of these are pulled in as dependencies of sddm / kde-plasma-
+## desktop, but they are declared explicitly so the failure mode above can
+## never be introduced by a dependency change.
+##
+## NOTE on naming: on noble the SVG image-format plugin lives in
+## qt5-image-formats-plugins. There is NO binary package called
+## "qt5-image-formats" in the noble index any more (that name only exists as
+## a source package), so only the -plugins name is listed. Verified:
+##   grep '^Package: qt5-image-formats-plugins$' in the noble universe index
+qml-module-qtquick2
+qml-module-qtquick-layouts
+libqt5quick5
+qt5-image-formats-plugins

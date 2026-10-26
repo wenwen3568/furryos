@@ -1,0 +1,325 @@
+// FurryOS Plymouth 启动画面脚本
+// ------------------------------------------------------------------
+// 视觉来源：assets/effects/splash/furryos-splash.svg（同一构图）
+// 色值唯一来源：assets/brand/brand-tokens.md
+//   furryos-blue-deep  #0A3568 → 0.0392, 0.2078, 0.4078
+//   furryos-blue       #1A6FD4 → 0.1020, 0.4353, 0.8314
+//   furryos-blue-pale  #EAF2FF → 0.9176, 0.9490, 1.0000
+//   furryos-white      #FFFFFF → 1, 1, 1
+//   furryos-blue-light #D6E6F7 → 0.8392, 0.9020, 0.9686
+// 结构参考：Ubuntu noble 的 plymouth-theme-breeze（breeze.script），
+//   但全部替换为 FurryOS 品牌元素，不继承任何上游资产或文案。
+// 禁止项：不得出现 Ubuntu 字样、Logo 或商标。
+
+// -------------------------------- Assets ---------------------------------- //
+global.title.text = "FurryOS";
+global.defaults.font.default = "Noto Sans 12";
+global.defaults.font.title = "Noto Sans 14";
+
+global.assets = [];
+if (Window.GetBitsPerPixel() == 4) {
+    assets.logo          = "images/paw-white-64.png";
+    assets.spinner_base  = "images/spinner-16";
+} else {
+    assets.logo          = "images/paw-white-256.png";
+    assets.spinner_base  = "images/spinner";
+}
+
+// -------------------------------- Colors ---------------------------------- //
+Color = fun(red, green, blue) {
+    local.color = [];
+    color.red = red;
+    color.green = green;
+    color.blue = blue;
+    return color | global.Color;
+} | [];
+
+global.colors = [];
+// brand-tokens.md 调色板（RGB 归一化到 0..1）
+colors.deep_blue   = Color(0.0392, 0.2078, 0.4078);   // furryos-blue-deep  #0A3568
+colors.brand_blue  = Color(0.1020, 0.4353, 0.8314);   // furryos-blue       #1A6FD4
+colors.light_blue  = Color(0.8392, 0.9020, 0.9686);   // furryos-blue-light #D6E6F7
+colors.pale_blue   = Color(0.9176, 0.9490, 1.0000);   // furryos-blue-pale  #EAF2FF
+colors.paper_white = Color(1.0000, 1.0000, 1.0000);   // furryos-white      #FFFFFF
+
+global.palette = [];
+// 背景：上 深蓝 → 下 白（与 furryos-splash.svg 的渐变方向一致）
+palette.background.top = colors.deep_blue;
+palette.background.bottom = colors.brand_blue;
+palette.text.normal = colors.paper_white;
+palette.text.tinted = colors.light_blue;
+palette.text.action = colors.pale_blue;
+palette.text.contrast = colors.deep_blue;   // 反色，用于深底上的输入提示
+
+Window.ApplyBackgroundColors = fun() {
+    Window.SetBackgroundTopColor(palette.background.top.red,
+                                 palette.background.top.green,
+                                 palette.background.top.blue);
+    if (Window.GetBitsPerPixel() == 4) {
+        // 16bit 输出不用渐变，避免色带
+        Window.SetBackgroundBottomColor(palette.background.top.red,
+                                        palette.background.top.green,
+                                        palette.background.top.blue);
+    } else {
+        Window.SetBackgroundBottomColor(palette.background.bottom.red,
+                                        palette.background.bottom.green,
+                                        palette.background.bottom.blue);
+    }
+};
+
+// ------------------------------- Classes ---------------------------------- //
+SpriteImage = fun(asset) {
+    local.sprite = Sprite();
+    sprite.image = Image(asset);
+    sprite.width = sprite.image.GetWidth();
+    sprite.height = sprite.image.GetHeight();
+    sprite.SetImage(sprite.image);
+    return sprite | global.SpriteImage;
+} | Sprite;
+
+SpriteImage.SetSpriteImage = fun(image) {
+    this.image = image;
+    this.width = image.GetWidth();
+    this.height = image.GetHeight();
+    this.SetImage(this.image);
+};
+
+// ---------------------------- Text utilities ------------------------------ //
+fun WriteText(text, color, font) {
+  if (!color) {
+    color = palette.text.normal;
+  }
+  if (!font) {
+    font = defaults.font.default;
+  }
+  return Image.Text(text, color.red, color.green, color.blue, 1, font);
+}
+
+String.ToImage = fun(color, font) {
+  return WriteText(this, color, font);
+};
+
+fun ImageToTintedText (text) {
+    return WriteText(text, palette.text.tinted);
+}
+
+fun ImageToActionText (text) {
+    return WriteText(text, palette.text.action);
+}
+
+// ------------------------------ Background -------------------------------- //
+Window.ApplyBackgroundColors();
+global.backgroundApplied = false;
+
+// --------------------------------- Logo ----------------------------------- //
+// 中央爪印（assets/brand/paw.svg 的白色反白版，位于蓝底上）
+Logo = fun() {
+    local.logo = SpriteImage(assets.logo);
+    logo.x = Window.GetX() + Window.GetWidth() / 2 - logo.width / 2;
+    logo.y = Window.GetY() + Window.GetHeight() / 2 - logo.height / 2;
+    logo.z = 1000;
+    logo.SetPosition(logo.x, logo.y, logo.z);
+
+    logo.name = Sprite(title.text.ToImage(NULL, defaults.font.title));
+    logo.name.x = Window.GetX() + Window.GetWidth() / 2 - logo.name.GetImage().GetWidth() / 2;
+    logo.name.y = logo.y + logo.height + logo.name.GetImage().GetHeight() / 2;
+    logo.name.z = logo.z;
+    logo.name.SetPosition(logo.name.x, logo.name.y, logo.z);
+
+    logo.height = logo.height + logo.name.GetImage().GetHeight();
+
+    return logo | global.Logo;
+} | SpriteImage;
+
+Logo.SetOpacity_ = fun(o) {
+    o = Math.Clamp(o, 0.0, 1.0);
+    this.SetOpacity(o);
+    this.name.SetOpacity(o);
+};
+
+logo = Logo();
+logo.SetOpacity_(0);
+
+// ----------------------------- Busy Animation ----------------------------- //
+// 由 furryos-spinner/ 提供帧图（运行时生成，见 README「资源生成」一节）
+Spinner = fun() {
+    spinner = global.Spinner | [];
+    spinner.count = 360;
+    spinner.current_idx = 0;
+    spinner.last_time = 0;
+    spinner.steps = 10.0;
+    spinner.duration = 1.5;   // 每圈 1.5s，轻快不拖沓
+    for (i = 0; i <= spinner.count; ++i) {
+        if (i % spinner.steps != 0) {
+            continue;
+        }
+        spinner[i] = SpriteImage(assets.spinner_base + "/spinner" + i + ".png");
+        center_offset = (logo.width / 2) - (spinner[i].width / 2);
+        top_offset = logo.height + spinner[i].height;
+        spinner[i].SetPosition(logo.GetX() + center_offset, logo.GetY() + top_offset, logo.GetZ());
+        spinner[i].SetOpacity(0);
+    }
+    return spinner;
+} | [];
+
+Spinner.Animate = fun(time) {
+    degrees = Math.Int(((2 * Math.Pi / duration) * time) * (180 / Math.PI));
+    new = degrees % count;
+    old = current_idx;
+    if (Math.Int(new) < Math.Int((old + steps) % count)) {
+        return;
+    }
+    new = Math.Int(new / steps) * steps;
+    this[old].SetOpacity(0);
+    this[new].SetOpacity(1);
+    current_idx = new;
+    return this;
+};
+
+Spinner.GetY = fun() {
+    return this[0].GetY();
+};
+
+Spinner.GetHeight = fun() {
+    return this[0].height;
+};
+
+global.spin = Spinner();
+
+// ---------------------------- State & Spacing ----------------------------- //
+message_notification[0].image = ImageToTintedText ("");
+message_notification[1].image = ImageToTintedText ("");
+fsck_notification.image = ImageToActionText ("");
+
+status = "normal";
+first_line_height = ImageToTintedText ("AfpqtM").GetHeight();
+
+Window.GetMaxWidth = fun() {
+    width = 0;
+    for (i = 0; Window.GetWidth(i); i++) {
+        width = Math.Max(width, Window.GetWidth(i));
+    }
+    return width;
+};
+
+Window.GetMaxHeight = fun() {
+    height = 0;
+    for (i = 0; Window.GetHeight(i); i++) {
+        height = Math.Max(height, Window.GetHeight(i));
+    }
+    return height;
+};
+
+fun TextYOffset() {
+    local.y = spin.GetY() + spin.GetHeight();
+    local.text_height = first_line_height * 7.5;
+    local.max_y = Window.GetHeight() + Window.GetY();
+    if (y + text_height > max_y) {
+        y = max_y - text_height;
+    } else {
+        y = y + ((max_y - y - text_height) / 2);
+    }
+    if (y < spin.GetY() + spin.GetHeight() + first_line_height / 2) {
+        y = spin.GetY() + spin.GetHeight() + first_line_height / 2;
+    }
+    return y;
+};
+
+top_of_the_text = TextYOffset();
+
+// ----------------------------- Boot Progress ------------------------------ //
+fun boot_progress_cb(time, progress) {
+    spin.Animate(time);
+    logo.SetOpacity_(time * 2.0);
+}
+Plymouth.SetBootProgressFunction (boot_progress_cb);
+
+// --------------------------- Message rendering ---------------------------- //
+fun get_message_label (label, is_fake, is_action_line) {
+    if (is_fake)
+        local.message_image = ImageToTintedText ("This is a fake message");
+    else
+        local.message_image = (is_action_line) && ImageToActionText (label) || ImageToTintedText (label);
+
+    local.message_label = [];
+    message_label.width = message_image.GetWidth ();
+    message_label.height = message_image.GetHeight ();
+    message_label.x = Window.GetX () + Window.GetWidth () / 2 - message_label.width / 2;
+    message_label.y = top_of_the_text + first_line_height/2;
+
+    local.lines = Math.Ceil(message_label.width / Window.GetMaxWidth());
+    if (lines == 0)
+        lines = 1;
+
+    local.offset = 0;
+    local.labels = [];
+    for (i = 0; i < lines; i++) {
+        local.begin_x = Window.GetX() + 10;
+        local.end_x = begin_x + Window.GetMaxWidth() - 20;
+        if (lines == 1)
+            end_x = Window.GetX() + Window.GetMaxWidth() - 10;
+
+        labels[i] = message_image.Crop(begin_x, offset, end_x, offset + first_line_height);
+        offset += first_line_height;
+    }
+
+    return labels;
+}
+
+fun get_fsck_label (label, is_fake) {
+    local.fsck_label = global.progress_label;
+    if (!fsck_label) {
+        fsck_label = [];
+        fsck_label.x = 0;
+        fsck_label.y = 0;
+        fsck_label.width = 0;
+        fsck_label.height = 0;
+    }
+    fsck_label.is_available = 0;
+    return fsck_label;
+}
+
+fun setup_message (message_text, x, y, z, index) {
+    global.message_notification[index].sprite = Sprite();
+    global.message_notification[index].sprite.SetImage (
+        message_text[0] || message_text);
+    global.message_notification[index].sprite.SetPosition (x, y, z);
+}
+
+fun show_message (index) {
+    if (global.message_notification[index].sprite) global.message_notification[index].sprite.SetOpacity(1);
+}
+
+fun hide_message (index) {
+    if (global.message_notification[index].sprite) global.message_notification[index].sprite.SetOpacity(0);
+}
+
+// ---------------------------- Refresh callback ---------------------------- //
+fun refresh_callback() {
+    if (!global.backgroundApplied) {
+        global.backgroundApplied = true;
+        Window.ApplyBackgroundColors();
+    }
+}
+Plymouth.SetRefreshFunction(refresh_callback);
+
+fun display_normal_callback() {
+    global.status = "normal";
+    if (global.password_dialog) {
+        password_dialog_opacity (0);
+        global.password_dialog = NULL;
+        if (message_notification[2].sprite) hide_message(2);
+        prompt_active = 0;
+    }
+    if (message_notification[1].sprite)
+        show_message (1);
+}
+Plymouth.SetDisplayNormalFunction (display_normal_callback);
+
+// 退出：淡出爪印与字标，交由 SDDM 接管（视觉过渡到登录界面）
+fun quit_callback() {
+  logo.SetOpacity_(0);
+}
+Plymouth.SetQuitFunction(quit_callback);
+
+// kate: space-indent on; indent-width 2; mixedindent off; indent-mode cstyle; hl JavaScript;

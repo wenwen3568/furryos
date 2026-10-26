@@ -1,0 +1,13 @@
+# FurryOS plasma shell defaults (/etc/skel/.config/plasmarc).
+#
+# Mirrors the [Theme] name used by the look-and-feel package so the shell and
+# the global theme agree on first login.
+
+[Theme]
+name=breeze
+
+[Wallpaper]
+defaultWallpaperTheme=FurryOS
+defaultFileSuffix=.png
+defaultWidth=1920
+defaultHeight=1080
