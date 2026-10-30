@@ -1,0 +1,23 @@
+[Icon Theme]
+Name=FurryOS
+Name[zh_CN]=FurryOS
+Comment=FurryOS icon theme — inherits Breeze; ships no upstream brand artwork
+Comment[zh_CN]=FurryOS 图标主题 —— 继承 Breeze，不打包任何上游品牌图形
+Inherits=breeze,hicolor
+Example=folder
+Hidden=false
+
+# WHY THIS FILE EXISTS
+# --------------------
+# The global theme has to name an icon theme, and naming `breeze` means the
+# desktop is only half FurryOS: the theme picker shows "FurryOS" while the icon
+# setting still reads Breeze. A thin theme that inherits Breeze is the standard
+# KDE way to own that setting (compare breeze-dark inheriting breeze) and it
+# gives the image a place to drop FurryOS-specific icons later.
+#
+# It deliberately ships no icon files: every lookup falls through `Inherits` to
+# the installed Breeze set, so this theme cannot regress icon coverage.
+# Installed by build/config/hooks/normal/6110-integrate-desktop-assets.chroot
+# from assets/desktop/icons/ -> /usr/share/icons/.
+Directories=
+ScaledDirectories=

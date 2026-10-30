@@ -16,7 +16,7 @@
         "Name": "FurryOS",
         "Name[zh_CN]": "FurryOS",
         "Version": "1.0",
-        "Website": "https://www.kde.org"
+        "Website": "https://furryos.example.org/"
     },
     "X-Plasma-API": "5.0"
 }

@@ -23,6 +23,18 @@
 - `#FFFFFF` on `#1A6FD4` ≈ 4.7:1（按钮文字，AA 大字/UI 组件）
 - `#FFFFFF` on `#0F4C8C` ≈ 7.4:1（按钮文字，AAA）
 
+## 1.1 语义色（非品牌色，但同样集中管理）
+
+品牌调色板之外，界面还需要「错误/失败」这类语义色。它们不是品牌色，但同样
+不允许在各组件里各写一份：SDDM 主题统一从 `components/Theme.qml` 取。
+
+| 令牌 | 色值 | 用途 | 说明 |
+|---|---|---|---|
+| `furryos-negative` | `#B3261E` | 登录失败提示文字 | 在 `furryos-blue-pale` 上对比度 5.80:1（AA 达标）；KDE 的 `#DA4453` 只有 3.78:1，故不采用 |
+
+`FurryOS.colors` 里 KDE 的 `ForegroundNegative` 仍是上游 Breeze 的 `#DA4453`
+（那是由 KDE 语义主题消费的键，属于另一条渲染路径）；两者用途不同，不要互相替换。
+
 ## 2. 爪印符号
 
 唯一权威符号：`assets/brand/paw.svg`（256x256 viewBox），光栅版 `assets/brand/paw.png`。

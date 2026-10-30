@@ -27,6 +27,9 @@ id_ed25519.pub
 /build/*.log
 /build/*.zsync
 /build/*.packages
+/build/*.contents
+/build/*.files
+/build/*modified_timestamps
 /build/.lock
 
 # ---- 解包的工具链（由 BUILD.md 说明的方法重新获取）----
@@ -55,6 +58,8 @@ id_ed25519.pub
 /.agent-teams/
 
 # ---- 编辑器 / 系统杂项 ----
+__pycache__/
+*.py[cod]
 *.swp
 *~
 .DS_Store

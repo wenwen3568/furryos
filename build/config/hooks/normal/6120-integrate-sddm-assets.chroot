@@ -18,9 +18,10 @@
 # generate that file ourselves - we let the layer's script own it. This hook
 # only stages the layer and invokes the script.
 #
-# A fallback installer is used if the layer's script is absent, so a missing
-# script degrades to "theme installed, no sddm.conf" rather than failing the
-# whole build.
+# A fallback installer is used if the layer's script is absent, but every
+# failure path below is FATAL: an image whose greeter silently fell back to
+# Breeze fails the contract ("登录界面为 FurryOS 主题") and must not report
+# build success. Earlier versions only warned.
 
 set -e
 
@@ -32,8 +33,9 @@ furryos_log "Installing SDDM login experience layer from ${SRC}"
 
 if [ ! -d "${SRC}" ]
 then
-	furryos_warn "sddm layer not staged; skipping (SDDM will use the default theme)"
-	exit 0
+	echo "${FURRYOS_LOG_TAG} ERROR: sddm layer not staged at ${SRC}" >&2
+	echo "${FURRYOS_LOG_TAG} ERROR: run tools/sync-assets.sh and check 6000-stage-furryos-assets.chroot" >&2
+	exit 1
 fi
 
 # --- locate the theme directory -------------------------------------------
@@ -58,8 +60,8 @@ fi
 
 if [ -z "${THEME_DIR}" ]
 then
-	furryos_warn "no SDDM theme with Main.qml found under ${SRC}"
-	exit 0
+	echo "${FURRYOS_LOG_TAG} ERROR: no SDDM theme with Main.qml found under ${SRC}" >&2
+	exit 1
 fi
 
 furryos_log "using theme directory ${THEME_DIR}"
@@ -69,13 +71,17 @@ if [ -x "${SRC}/install-sddm-theme.sh" ]
 then
 	furryos_log "invoking the layer's install-sddm-theme.sh"
 	# The script takes (theme dir, prefix). Inside the chroot the prefix is /.
-	"${SRC}/install-sddm-theme.sh" "${THEME_DIR}" / || \
-		furryos_warn "install-sddm-theme.sh returned non-zero"
+	"${SRC}/install-sddm-theme.sh" "${THEME_DIR}" / || {
+		echo "${FURRYOS_LOG_TAG} ERROR: install-sddm-theme.sh failed" >&2
+		exit 1
+	}
 elif [ -e "${SRC}/install-sddm-theme.sh" ]
 then
 	# Not executable (a copy may have dropped the bit); run it via sh.
-	sh "${SRC}/install-sddm-theme.sh" "${THEME_DIR}" / || \
-		furryos_warn "install-sddm-theme.sh returned non-zero"
+	sh "${SRC}/install-sddm-theme.sh" "${THEME_DIR}" / || {
+		echo "${FURRYOS_LOG_TAG} ERROR: install-sddm-theme.sh failed" >&2
+		exit 1
+	}
 else
 	# --- fallback installer ---------------------------------------------
 	furryos_warn "layer installer not found; using build-verify fallback"
@@ -102,19 +108,18 @@ EOF
 fi
 
 # --- verify the result -----------------------------------------------------
-if [ -f /usr/share/sddm/themes/furryos/Main.qml ]
-then
-	furryos_log "theme present at /usr/share/sddm/themes/furryos/Main.qml"
-else
-	furryos_warn "theme Main.qml not found after install"
-fi
+# Hard assertions: the contract says the login screen IS the FurryOS theme, so
+# a missing theme or a non-furryos Current= must abort the build.
+furryos_need_file /usr/share/sddm/themes/furryos/Main.qml "installed SDDM theme entry point"
+furryos_need_file /usr/share/sddm/themes/furryos/metadata.desktop "installed SDDM theme metadata"
+furryos_need_file /etc/sddm.conf "SDDM configuration"
 
-if [ -f /etc/sddm.conf ]
+if ! grep -q '^Current=furryos$' /etc/sddm.conf
 then
-	furryos_log "/etc/sddm.conf -> $(grep -E '^Current=' /etc/sddm.conf || echo '<no Current key>')"
-else
-	furryos_warn "/etc/sddm.conf was not created"
+	echo "${FURRYOS_LOG_TAG} ERROR: /etc/sddm.conf does not set Current=furryos" >&2
+	exit 1
 fi
+furryos_log "/etc/sddm.conf -> $(grep -E '^Current=' /etc/sddm.conf)"
 
 # --- QML runtime dependencies ---------------------------------------------
 # The theme is pure QtQuick 2 + QtQml + QtQuick.Layouts (no org.kde.plasma.*,

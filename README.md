@@ -35,7 +35,7 @@ FurryOS 是一个 **live-build 工程**，从 Ubuntu 24.04 LTS（noble）构建�
 | **系统身份** | `/etc/os-release`、`issue`、`motd`、`legal`、SSH 横幅、lsb-release | `assets/identity/` | `6010-integrate-identity-assets.chroot` |
 | **桌面视觉** | `FurryOS.colors` 配色、1920×1080 爪印壁纸、Plasma 主题、skel 配置 | `assets/desktop/` | `6110-integrate-desktop-assets.chroot` |
 | **登录体验** | SDDM 主题 `furryos`、QML 组件、爪印背景、按钮三态动效 | `assets/sddm/` | `6120-integrate-sddm-assets.chroot` |
-| **交互动效** | KWin 点击特效（彩带扩散）、启动画面（plymouth / ksplash） | `assets/effects/` | `6130-integrate-effects-assets.chroot` |
+| **交互动效** | KWin 点击特效（涟漪扩散）、启动画面（KDE ksplash 主题 `org.furryos.desktop`） | `assets/effects/` | `6130-integrate-effects-assets.chroot` |
 | **构建交付** | live-build 工程、资产暂存、启动菜单品牌、清理与验收 | `build/config/` | `6000` / `8000` / `8990` |
 
 ### 设计色板
@@ -110,7 +110,7 @@ sudo apt-get install -y live-build debootstrap squashfs-tools xorriso \
 
 ```sh
 cd furryos
-sh tools/sync-assets.sh
+bash tools/sync-assets.sh
 ```
 
 ### 4.3 配置并构建
@@ -131,7 +131,33 @@ sudo lb build
 
 产物为 `build/live-image-amd64.hybrid.iso`，卷标 `FurryOS`。
 
+> `build/config/` 是随仓库提交的（已 `lb config` 过的结果），所以**通常不需要再跑
+> `lb config`**；跑之前注意它会按参数重写整个目录。
+
 > 首次构建会下载约 2 GB 软件包（KDE Plasma 全套，1500+ 包），耗时取决于网络。
+
+#### 改了配置或资产之后，必须先 `lb clean`
+
+live-build 用 stagefile（`build/config/binary`、`build/config/chroot` 等）做**短路**：
+stagefile 存在且比输入新时，整个阶段会被直接跳过。典型症状是「改了 `assets/` 或
+`build/config/hooks/normal/` 里的钩子，重新 `lb build` 出来的 ISO 里还是旧内容，
+日志里连该阶段的一行输出都没有」。清一次再建：
+
+```sh
+cd build
+bash ../tools/lb.sh clean           # 清 chroot/ 与 binary/，保留 config/
+bash ../tools/lb.sh build
+```
+
+只想重建 ISO 层（保留已装好的 chroot，快，但 chroot 内的钩子不会重跑）：
+
+```sh
+bash ../tools/lb.sh clean --binary
+bash ../tools/lb.sh build
+```
+
+`tools/lb.sh clean` 特意**不**在调用前 bind-mount `/dev`：chroot 的 `/dev/*` 被挂上
+之后 `lb clean` 删目录会报 `Device or resource busy`，清不干净。
 
 ### 4.4 在受限宿主机上构建
 
@@ -145,8 +171,12 @@ sudo lb build
 
 ```sh
 cd build
-sh ../tools/lb.sh build
+bash ../tools/lb.sh build
 ```
+
+包装器会在 `tools/rootfs`、`tools/lbroot`、`tools/shim` 缺失时自动调用
+`tools/prepare-toolchain.sh` 重新解包并打补丁（这些目录是 `.gitignore` 排除的
+可重建依赖，克隆下来并不存在）。
 
 `tools/lb.sh` 在每次调用前会重建 `/dev` 设备节点并 bind-mount 宿主 `/dev` 进 chroot，
 并把 `FURRYOS_BIND_DEVICES=1` 传给第二阶段 debootstrap。
@@ -169,15 +199,34 @@ sudo dd if=build/live-image-amd64.hybrid.iso of=/dev/sdX bs=4M status=progress o
 
 ## 5. 验证
 
+### 5.0 一键品牌自检
+
+改了资产或钩子之后先跑这个，四条链一次过：
+
+```sh
+bash tools/verify-brand.sh            # 联网取上游参考包
+bash tools/verify-brand.sh --no-fetch # 只用本地缓存
+```
+
+它依次跑：系统身份层（33 项断言）→ 桌面视觉层（配色/壁纸/一致性）→ 启动画面像素
+抽查 → SDDM 主题的 `qmllint`。任何一项失败，退出码非 0 并打印失败项清单。
+
 ### 5.1 系统身份层（33 项断言）
 
 ```sh
-sudo bash tools/verify-identity.sh
+bash tools/verify-identity.sh
 ```
 
 预期输出 `PASS=33 FAIL=0`，退出码 0。校验项包括 `/etc/os-release` 的 `NAME`/`PRETTY_NAME`、
 `/etc/os-release` 指向 `/usr/lib/os-release` 的符号链接、`issue`/`motd`/`legal` 无上游字样、
 `update-motd.d` 脚本权限等。
+
+脚本**不需要 root**：它把上游参考包装到 `.verify/` 里比对，不碰宿主的 `/etc`。
+首次运行会自动调用 `tools/fetch-refs.sh` 下载 noble 的 `base-files`、
+`openssh-server`、`motd-news-config`、`lsb-release` 参考包（`--no-fetch` 可跳过）。
+
+断言条数是**被校验的**：脚本末尾用 `EXPECTED_PASS=33` 核对通过数，任何一条断言被
+误删或被静默跳过都会让脚本失败，而不是「悄悄少跑几项仍然 PASS」。
 
 ### 5.2 登录界面
 
@@ -195,12 +244,21 @@ cd /usr/share/sddm/themes/furryos
 qmllint -I . --qmldirs /usr/lib/x86_64-linux-gnu/qt5/qml Main.qml components/*.qml
 ```
 
-**最容易踩的坑**：缺 `qt5-image-formats` 时界面和动画都正常，**只有爪印静默消失**，且不弹任何错误。
+**最容易踩的坑**：主题里的爪印是 SVG，靠 Qt 的 SVG 图像格式插件渲染。
+缺 `libqt5svg5`（提供 `plugins/imageformats/libqsvg.so`）时界面和动画都正常，
+**只有爪印静默消失**，且不弹任何错误。
 
 ```sh
-sudo apt-get install -y qt5-image-formats qml-module-qtquick2 libqt5quick5
+# 自检：插件文件在不在
+ls /usr/lib/x86_64-linux-gnu/qt5/plugins/imageformats/libqsvg.so
+
+sudo apt-get install -y libqt5svg5 qt5-image-formats-plugins \
+                        qml-module-qtquick2 libqt5quick5
 sudo systemctl restart sddm
 ```
+
+（`qt5-image-formats-plugins` 提供的是 tiff/webp/jp2 等格式，**不**含 `libqsvg.so`；
+noble 里也没有叫 `qt5-image-formats` 的二进制包。）
 
 ### 5.3 出问题时
 
@@ -232,9 +290,9 @@ sudo systemctl restart sddm
 
 | 限制 | 影响 | 应对 |
 |---|---|---|
-| 宿主无 GL 上下文 | 无法在宿主机渲染 SDDM 真实截图 | 用 `QQmlComponent` 实例化主题对象树做属性断言；另按真实坐标绘制四状态预览图 |
-| 宿主非目标发行版 | 无法启动真实 SDDM 会话 | 提供 `install-sddm-theme.sh` 供注入；目视确认步骤见 BUILD.md 3.1 ⑦ |
-| `qt5-image-formats` 在 noble 已并入源包 | 缺失时爪印静默消失 | 显式安装，见 5.2 |
+| 宿主无 GL 上下文 | 不能直接在宿主机渲染 SDDM 真实截图 | 宿主用 `QQmlComponent` 做属性断言；最终已在 QEMU 中取得真实 SDDM 截屏，见 `docs/VM-VERIFY.md` |
+| 宿主非目标发行版 | 不能把宿主会话当成目标系统验收 | 用 ISO 虚拟机实测 SDDM/KDE/KSplash；提供 `install-sddm-theme.sh` 供注入 |
+| `libqt5svg5` 提供 SVG 图像格式插件 | 缺失时爪印静默消失 | 目前由依赖链带入，自检命令见 5.2 |
 | 宿主 `/root` 挂载 `nodev` | 设备节点不可写 | `tools/lb.sh` bind-mount 宿主 `/dev` |
 
 完整的 11 条环境限制见 `docs/BUILD.md` 第 5 节。
@@ -247,6 +305,11 @@ sudo systemctl restart sddm
 |---|---|
 | [`docs/BUILD.md`](docs/BUILD.md) | 构建环境、资产注入、**逐层降级方案**、ISO 验收清单、环境限制 |
 | [`docs/CONTRACTS.md`](docs/CONTRACTS.md) | 五层资产注入契约、落盘路径、冲突裁决规则 |
+| [`docs/VISUAL.md`](docs/VISUAL.md) | **视觉规范与验收**：统一色板/动效/爪印母题、逐界面「问题→做法→验收命令→输出」、预览图与证据边界 |
+| [`docs/BUILD-LOG.md`](docs/BUILD-LOG.md) | 最终完整构建、ISO 大小/SHA256、rootfs 与 ISO 结构检查 |
+| [`docs/VM-VERIFY.md`](docs/VM-VERIFY.md) | BIOS/UEFI/SDDM/KDE/KSplash/hostname 的真实虚拟机验收 |
+| [`docs/FIXES-ROUND2.md`](docs/FIXES-ROUND2.md) | UEFI 路径、KSplash 权限崩溃、壁纸回落与 hostname 的根因修复 |
+| [`docs/RELEASE.md`](docs/RELEASE.md) | 源码发布范围、重建入口、仓库卫生与推送核对 |
 | [`docs/sddm-verification/`](docs/sddm-verification/) | SDDM 主题验证报告（QML 6/6、色值 18/18、几何 0 重叠）与四状态预览图 |
 | [`assets/sddm/README.md`](assets/sddm/README.md) | SDDM 主题设计说明、坐标基准、动画参数 |
 | [`assets/effects/README.md`](assets/effects/README.md) | 点击特效与启动画面的实现与校验方法 |

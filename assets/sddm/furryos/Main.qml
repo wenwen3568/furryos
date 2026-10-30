@@ -2,14 +2,19 @@
     FurryOS SDDM 主题 —— 主界面
     ------------------------------------------------------------
     完整登录界面布局（非仅替换背景图）：
-      · 用户名输入框（含爪印图标）
-      · 密码输入框（含爪印图标、密码遮蔽）
+      · 品牌区：爪印 logo + FurryOS 字标 + 副标语
+      · 用户名输入框、密码输入框（含爪印图标、密码遮蔽）
       · 登录按钮（悬停 140ms / 按下 200ms / 错误抖动 320ms）
       · 关机入口、重启入口
-      · 会话选择、键盘布局、虚拟键盘入口
+      · 会话选择（右上角）
       · 爪印背景装饰（不遮挡输入区域）
-    色值唯一来源：assets/brand/brand-tokens.md（经 components/Theme.qml 注入）
-    动效参数唯一来源：assets/brand/brand-tokens.md 第 4 节
+    色值/字号/圆角/动效参数唯一来源：components/Theme.qml
+      （其上游唯一权威是 assets/brand/brand-tokens.md）
+
+    缩放：SDDM 以 SizeRootObjectToView 把根 Item 拉伸到实际分辨率，
+    因此所有版式尺寸都乘以 screenScale（= min(w/1600, h/900)），
+    1600x900 设计基准在 1366x768 / 1920x1080 / 2560x1440 上等比呈现。
+    t5 之前卡片是固定 380x560 像素，在 4K 屏上只剩一小块。
 */
 import QtQuick 2.15
 import QtQml 2.15
@@ -28,7 +33,9 @@ Rectangle {
     color: Theme.furryosBluePale
 
     /* ---- 屏幕适配：SDDM 会把此 Item 拉伸到实际分辨率 ---- */
-    property real screenScale: Math.min(width / 1600, height / 900)
+    readonly property real screenScale: Math.min(width / 1600, height / 900)
+    /* 版式缩放别名：所有尺寸令牌乘以它 */
+    readonly property real s: screenScale
 
     /* ---- 全局状态 ---- */
     property string notificationMessage: ""
@@ -53,7 +60,7 @@ Rectangle {
         anchors.right: parent.right
         anchors.top: parent.top
         anchors.bottom: parent.bottom
-        width: 320 * root.screenScale
+        width: Math.round(320 * root.s)
         color: Theme.furryosBlue
         opacity: 0.10
         z: 0
@@ -69,14 +76,14 @@ Rectangle {
         Rectangle {
             id: loginCard
             objectName: "loginCard"
-            width: 380
-            height: 560
+            width: Math.round(Theme.cardWidth * root.s)
+            height: Math.round(Theme.cardHeight * root.s)
             anchors.left: parent.left
-            anchors.leftMargin: 130
+            anchors.leftMargin: Math.round(Theme.cardMargin * root.s)
             anchors.verticalCenter: parent.verticalCenter
             color: Theme.furryosWhite
-            radius: 16
-            border.width: 1
+            radius: Math.round(Theme.radiusCard * root.s)
+            border.width: Theme.hairlineWidth
             border.color: Theme.furryosBlueLight
 
             /* 记录安全区，供背景装饰避让与外部校验 */
@@ -84,29 +91,29 @@ Rectangle {
 
             ColumnLayout {
                 anchors.fill: parent
-                anchors.margins: 34
-                spacing: 18
+                anchors.margins: Math.round(Theme.cardPadding * root.s)
+                spacing: Math.round(Theme.columnSpacing * root.s)
 
                 /* ---- 品牌标题：爪印 + FurryOS ---- */
                 RowLayout {
                     Layout.fillWidth: true
                     Layout.alignment: Qt.AlignHCenter
-                    spacing: 12
+                    spacing: Math.round(12 * root.s)
 
                     Image {
                         id: brandPaw
-                        width: 40
-                        height: 40
+                        width: Math.round(Theme.brandPawPx * root.s)
+                        height: Math.round(Theme.brandPawPx * root.s)
                         source: "assets/paw.svg"
-                        sourceSize.width: 40
-                        sourceSize.height: 40
+                        sourceSize.width: Math.round(Theme.brandPawPx * root.s)
+                        sourceSize.height: Math.round(Theme.brandPawPx * root.s)
                         fillMode: Image.PreserveAspectFit
                     }
 
                     Text {
                         text: "FurryOS"
                         color: Theme.furryosBlueDeep
-                        font.pixelSize: Theme.titleFontPx
+                        font.pixelSize: Math.round(Theme.titleFontPx * root.s)
                         font.weight: Font.Bold
                         font.letterSpacing: 1
                     }
@@ -118,74 +125,92 @@ Rectangle {
                     Layout.alignment: Qt.AlignHCenter
                     text: "欢迎回来，请登录"
                     color: Theme.furryosTextMuted
-                    font.pixelSize: Theme.labelFontPx
+                    font.pixelSize: Math.round(Theme.labelFontPx * root.s)
                     horizontalAlignment: Text.AlignHCenter
                 }
 
                 /* 分隔 */
                 Rectangle {
                     Layout.fillWidth: true
-                    Layout.topMargin: 6
-                    height: 1
+                    Layout.topMargin: Math.round(6 * root.s)
+                    height: Theme.hairlineWidth
                     color: Theme.furryosBlueLight
                 }
 
-                /* ---- 用户名 ---- */
-                Text {
-                    text: "用户名"
-                    color: Theme.furryosText
-                    font.pixelSize: Theme.labelFontPx
-                    font.weight: Font.DemiBold
-                }
-
-                FurryField {
-                    id: userField
+                /* ---- 用户名：标签与输入框成组，组内 6px、组间用 columnSpacing ---- */
+                ColumnLayout {
                     Layout.fillWidth: true
-                    implicitHeight: Theme.fieldHeight
-                    placeholder: "请输入用户名"
-                    KeyNavigation.tab: passwordField
-                    Component.onCompleted: forceActiveFocus()
+                    spacing: Math.round(6 * root.s)
+
+                    Text {
+                        text: "用户名"
+                        color: Theme.furryosText
+                        font.pixelSize: Math.round(Theme.labelFontPx * root.s)
+                        font.weight: Font.DemiBold
+                    }
+
+                    FurryField {
+                        id: userField
+                        Layout.fillWidth: true
+                        implicitHeight: Math.round(Theme.fieldHeight * root.s)
+                        fontSize: Math.round(Theme.bodyFontPx * root.s)
+                        radius: Math.round(Theme.radiusControl * root.s)
+                        placeholder: "请输入用户名"
+                        errorState: root.loginFailed
+                        KeyNavigation.tab: passwordField
+                        Component.onCompleted: forceActiveFocus()
+                    }
                 }
 
                 /* ---- 密码 ---- */
-                Text {
-                    text: "密码"
-                    color: Theme.furryosText
-                    font.pixelSize: Theme.labelFontPx
-                    font.weight: Font.DemiBold
-                }
-
-                FurryField {
-                    id: passwordField
+                ColumnLayout {
                     Layout.fillWidth: true
-                    implicitHeight: Theme.fieldHeight
-                    isPassword: true
-                    placeholder: "请输入密码"
-                    KeyNavigation.tab: loginButton
-                    onAccepted: loginButton.clicked()
+                    spacing: Math.round(6 * root.s)
+
+                    Text {
+                        text: "密码"
+                        color: Theme.furryosText
+                        font.pixelSize: Math.round(Theme.labelFontPx * root.s)
+                        font.weight: Font.DemiBold
+                    }
+
+                    FurryField {
+                        id: passwordField
+                        Layout.fillWidth: true
+                        implicitHeight: Math.round(Theme.fieldHeight * root.s)
+                        fontSize: Math.round(Theme.bodyFontPx * root.s)
+                        radius: Math.round(Theme.radiusControl * root.s)
+                        isPassword: true
+                        placeholder: "请输入密码"
+                        errorState: root.loginFailed
+                        KeyNavigation.tab: loginButton
+                        onAccepted: loginButton.clicked()
+                    }
                 }
 
                 /* ---- 提示信息（含密码错误） ---- */
                 Text {
                     id: messageLabel
                     Layout.fillWidth: true
-                    Layout.topMargin: 4
+                    Layout.topMargin: Math.round(4 * root.s)
                     text: root.notificationMessage
-                    color: root.loginFailed ? "#B3261E" : Theme.furryosTextMuted
-                    font.pixelSize: Theme.labelFontPx
+                    color: root.loginFailed ? Theme.furryosNegative : Theme.furryosTextMuted
+                    font.pixelSize: Math.round(Theme.labelFontPx * root.s)
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.WordWrap
                     visible: text.length > 0
                 }
 
                 /* 弹性空间 */
-                Item { Layout.fillHeight: true; Layout.minimumHeight: 8 }
+                Item { Layout.fillHeight: true; Layout.minimumHeight: Math.round(8 * root.s) }
 
                 /* ---- 登录按钮（主动效） ---- */
                 FurryButton {
                     id: loginButton
                     Layout.fillWidth: true
-                    implicitHeight: Theme.buttonHeight
+                    implicitHeight: Math.round(Theme.buttonHeight * root.s)
+                    fontSize: Math.round(Theme.bodyFontPx * root.s)
+                    radius: Math.round(Theme.radiusControl * root.s)
                     text: "登  录"
                     baseColor: Theme.furryosBlue
                     hoverColor: Theme.furryosAccentHover
@@ -197,15 +222,16 @@ Rectangle {
                 /* ---- 关机 / 重启 ---- */
                 RowLayout {
                     Layout.fillWidth: true
-                    Layout.topMargin: 6
-                    spacing: 12
+                    Layout.topMargin: Math.round(6 * root.s)
+                    spacing: Math.round(12 * root.s)
 
                     FurryButton {
                         id: shutdownButton
                         Layout.fillWidth: true
-                        implicitHeight: 44
+                        implicitHeight: Math.round(44 * root.s)
+                        radius: Math.round(Theme.radiusControl * root.s)
                         text: "关机"
-                        fontSize: Theme.labelFontPx
+                        fontSize: Math.round(Theme.labelFontPx * root.s)
                         baseColor: Theme.furryosBlueDark
                         hoverColor: Theme.furryosBlue
                         pressColor: Theme.furryosBlueDeep
@@ -216,9 +242,10 @@ Rectangle {
                     FurryButton {
                         id: restartButton
                         Layout.fillWidth: true
-                        implicitHeight: 44
+                        implicitHeight: Math.round(44 * root.s)
+                        radius: Math.round(Theme.radiusControl * root.s)
                         text: "重启"
-                        fontSize: Theme.labelFontPx
+                        fontSize: Math.round(Theme.labelFontPx * root.s)
                         baseColor: Theme.furryosBlueDark
                         hoverColor: Theme.furryosBlue
                         pressColor: Theme.furryosBlueDeep
@@ -229,26 +256,26 @@ Rectangle {
             }
         }
 
-        /* ---- 右侧品牌面板：爪印 + 标语（输入区之外） ---- */
+        /* ---- 右侧品牌面板：爪印 + 字标 + 标语（输入区之外） ---- */
         Item {
             id: brandPanel
             anchors.left: loginCard.right
-            anchors.leftMargin: 60
+            anchors.leftMargin: Math.round(60 * root.s)
             anchors.right: parent.right
-            anchors.rightMargin: 60
+            anchors.rightMargin: Math.round(60 * root.s)
             anchors.verticalCenter: parent.verticalCenter
 
             ColumnLayout {
                 anchors.fill: parent
-                spacing: 24
+                spacing: Math.round(24 * root.s)
 
                 Image {
                     Layout.alignment: Qt.AlignHCenter
-                    width: 180
-                    height: 180
+                    width: Math.round(Theme.panelPawPx * root.s)
+                    height: Math.round(Theme.panelPawPx * root.s)
                     source: "assets/paw.svg"
-                    sourceSize.width: 180
-                    sourceSize.height: 180
+                    sourceSize.width: Math.round(Theme.panelPawPx * root.s)
+                    sourceSize.height: Math.round(Theme.panelPawPx * root.s)
                     fillMode: Image.PreserveAspectFit
                     opacity: 0.55
                 }
@@ -257,7 +284,7 @@ Rectangle {
                     Layout.alignment: Qt.AlignHCenter
                     text: "FurryOS"
                     color: Theme.furryosBlueDeep
-                    font.pixelSize: 42
+                    font.pixelSize: Math.round(Theme.displayFontPx * root.s)
                     font.weight: Font.Bold
                 }
 
@@ -265,31 +292,41 @@ Rectangle {
                     Layout.alignment: Qt.AlignHCenter
                     text: "蓝白之间，轻快回应"
                     color: Theme.furryosTextMuted
-                    font.pixelSize: 18
+                    font.pixelSize: Math.round(Theme.labelFontPx * root.s * 1.4)
                 }
             }
         }
 
-        /* ---- 顶部工具条：会话 / 键盘布局 ----
+        /* ---- 右上角工具条：会话选择 ----
            使用自绘控件而非 SddmComponents.ComboBox，
-           避免主题对发行版 SddmComponents 安装路径的依赖。 */
+           避免主题对发行版 SddmComponents 安装路径的依赖。
+           键盘布局/虚拟键盘入口不在本主题内实现：SDDM 的 keyboard
+           对象只在部分 greeter 构建里暴露，强行调用会在缺对象时抛
+           ReferenceError，故此处只保留会话选择这一项。 */
         RowLayout {
             id: topBar
             anchors.top: parent.top
             anchors.right: parent.right
-            anchors.margins: 20
-            spacing: 10
+            anchors.margins: Math.round(20 * root.s)
+            spacing: Math.round(10 * root.s)
             z: 2
 
             Rectangle {
                 id: sessionBox
                 objectName: "sessionBox"
-                width: 200
-                height: 34
-                radius: 8
-                color: Theme.furryosWhite
-                border.width: 1
-                border.color: Theme.furryosBlueLight
+                width: Math.round(200 * root.s)
+                height: Math.round(Theme.chipHeight * root.s)
+                radius: Math.round(Theme.radiusChip * root.s)
+                color: sessionHover.containsMouse ? Theme.furryosBluePale : Theme.furryosWhite
+                border.width: Theme.hairlineWidth
+                border.color: sessionHover.containsMouse ? Theme.furryosBlue : Theme.furryosBlueLight
+
+                Behavior on color {
+                    ColorAnimation { duration: Theme.hoverDuration; easing.type: Easing.OutQuad }
+                }
+                Behavior on border.color {
+                    ColorAnimation { duration: Theme.hoverDuration; easing.type: Easing.OutQuad }
+                }
 
                 property int currentIndex: (typeof sessionModel !== "undefined" && sessionModel.lastIndex >= 0) ? sessionModel.lastIndex : 0
                 readonly property string currentName: {
@@ -300,27 +337,28 @@ Rectangle {
 
                 Text {
                     anchors.left: parent.left
-                    anchors.leftMargin: 12
+                    anchors.leftMargin: Math.round(12 * root.s)
                     anchors.right: sessionArrow.left
-                    anchors.rightMargin: 6
+                    anchors.rightMargin: Math.round(6 * root.s)
                     anchors.verticalCenter: parent.verticalCenter
                     text: sessionBox.currentName
                     color: Theme.furryosText
-                    font.pixelSize: Theme.labelFontPx
+                    font.pixelSize: Math.round(Theme.captionFontPx * root.s)
                     elide: Text.ElideRight
                 }
 
                 Text {
                     id: sessionArrow
                     anchors.right: parent.right
-                    anchors.rightMargin: 12
+                    anchors.rightMargin: Math.round(12 * root.s)
                     anchors.verticalCenter: parent.verticalCenter
                     text: "▾"
-                    color: Theme.furryosBlue
-                    font.pixelSize: 14
+                    color: sessionBox.currentIndex >= 0 && sessionHover.containsMouse ? Theme.furryosAccentHover : Theme.furryosBlue
+                    font.pixelSize: Math.round(Theme.captionFontPx * root.s)
                 }
 
                 MouseArea {
+                    id: sessionHover
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
@@ -381,6 +419,7 @@ Rectangle {
             root.notificationMessage = "用户名或密码错误"
             root.loginFailed = true
             loginButton.shake()
+            passwordField.shake()
             passwordField.text = ""
             passwordField.forceActiveFocus()
         }

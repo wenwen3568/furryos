@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <title>FurryOS paw mark — white variant (for use on furryos-blue surfaces)</title>
+  <!--
+    assets/brand/paw.svg 的白色反白版：几何完全一致，仅填充色不同。
+    用途：主色按钮（#1A6FD4 底）内的爪印标记。
+    为什么必须另存一份：assets/sddm/furryos/assets/paw.svg 是 furryos-blue
+    (#1A6FD4) 填充，直接放在 #1A6FD4 按钮上等于同色叠同色、看不见。
+    装饰性使用（低透明度）仍用蓝色版；蓝色底上必须用本文件。
+  -->
+  <g fill="#FFFFFF">
+    <!-- main pad -->
+    <path d="M128 150c32 0 58 21 58 45 0 16-15 27-33 27h-50c-18 0-33-11-33-27c0-24 26-45 58-45z"/>
+    <!-- toes: plain ellipses, no transforms (renderer-safe) -->
+    <ellipse cx="50" cy="108" rx="25" ry="32"/>
+    <ellipse cx="97" cy="62" rx="24" ry="32"/>
+    <ellipse cx="159" cy="62" rx="24" ry="32"/>
+    <ellipse cx="206" cy="108" rx="25" ry="32"/>
+  </g>
+</svg>

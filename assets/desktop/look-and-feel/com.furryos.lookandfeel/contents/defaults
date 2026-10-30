@@ -5,21 +5,54 @@
 # login matches the global theme exactly.
 #
 # Every value here points at something that ships with the system image:
-#   widgetStyle=breeze      -> kde-style-breeze (in the package list)
-#   Theme=breeze            -> breeze (plasma desktop theme)
-#   Theme=breeze_cursors    -> breeze-cursor-theme
+#   widgetStyle=Breeze        -> kde-style-breeze (in the package list)
+#   Theme=furryos             -> assets/desktop/plasma-theme/furryos
+#                                (colors-only theme, same shape as KDE's own
+#                                 breeze-light/breeze-dark; widget SVGs fall
+#                                 back to the upstream `default` theme)
+#   Theme=FurryOS (icons)     -> assets/desktop/icons/FurryOS (Inherits=breeze)
+#   Theme=breeze_cursors      -> breeze-cursor-theme
+#   font=Noto Sans,10         -> fonts-noto-core (pulled in by plasma-desktop)
+#   fixed=Hack,10             -> fonts-hack
 # No upstream brand asset is pulled in: only Breeze's own *layout*, recoloured
 # through the FurryOS colour scheme and the FurryOS wallpaper.
+#
+# WHY EVERY ONE OF THE SIX KEYS IS SPELLED OUT
+# --------------------------------------------
+# A global theme that only sets the colour scheme leaves the other five at
+# whatever Breeze last wrote, which is the classic "half FurryOS, half Breeze"
+# result (FurryOS windows + Breeze panel + Breeze icons). Verified with the
+# real Plasma 5.27 tool on the host:
+#     XDG_DATA_HOME=... XDG_CONFIG_HOME=... \
+#         plasma-apply-lookandfeel --apply com.furryos.lookandfeel
+#   -> $XDG_CONFIG_HOME/kdedefaults/{kdeglobals,plasmarc,kcminputrc,kwinrc}
+# which is what tools/verify-visual.sh asserts.
+#
+# t5 fixed `name=breeze` -> `name=furryos`: "breeze" is not a desktop theme in
+# Plasma 5.27 (the directory is `default`, plus the breeze-light/breeze-dark
+# colour variants). Plasma silently fell back to `default`, so the panel kept
+# Breeze's colours. Proof:
+#     plasma-apply-desktoptheme breeze
+#   -> Could not find theme "breeze". The theme should be one of the
+#      following options: air, default, breeze-dark, breeze-light, furryos, ...
 
 [kdeglobals][KDE]
-widgetStyle=breeze
+widgetStyle=Breeze
+# Plasma/KWin global animation speed multiplier (1.0 = normal).
+# Key verified in libkwin.so.5.27.11 (utf16 string "AnimationDurationFactor").
+# 1 keeps the brand motion budget (140/200/320ms) at its designed speed.
+AnimationDurationFactor=1
 
 [kdeglobals][General]
 ColorScheme=FurryOS
 AccentColor=26,111,212
+font=Noto Sans,10,-1,5,50,0,0,0,0,0
+fixed=Hack,10,-1,5,50,0,0,0,0,0
+menuFont=Noto Sans,10,-1,5,50,0,0,0,0,0
+toolBarFont=Noto Sans,10,-1,5,50,0,0,0,0,0
 
 [kdeglobals][Icons]
-Theme=breeze
+Theme=FurryOS
 
 [kdeglobals][MainToolbarIcons]
 Size=16
@@ -28,14 +61,29 @@ Size=16
 Size=16
 
 [plasmarc][Theme]
-name=breeze
+name=furryos
 
 [kwinrc][org.kde.kdecoration2]
 library=org.kde.breeze
 theme=Breeze
+
+# NOTE — why there is no [kwinrc][Plugins] glideEnabled here:
+# plasma-apply-lookandfeel applies only the kdecoration2 group from [kwinrc]
+# (verified on Plasma 5.27: applying this package writes kdedefaults/kwinrc
+# containing just [org.kde.kdecoration2]; a [kwinrc][Plugins] block is dropped).
+# The window open/close animation switch therefore lives where the session
+# actually reads it: /etc/skel/.config/kwinrc -> [Plugins] glideEnabled=true.
+# `glide` ships EnabledByDefault=false in kwin-data 5.27, so without that key
+# windows pop in/out with no animation at all.
 
 [kcminputrc][Mouse]
 cursorTheme=breeze_cursors
 
 [Wallpaper]
 Image=FurryOS
+
+# Login -> desktop transition must be the FurryOS splash, not Breeze's.
+# Breeze's own look-and-feel carries `[KSplash] Theme=org.kde.Breeze`; a global
+# theme without this group leaves whatever splash was selected before.
+[KSplash]
+Theme=org.furryos.desktop

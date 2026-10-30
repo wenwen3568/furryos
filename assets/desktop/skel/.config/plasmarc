@@ -2,9 +2,23 @@
 #
 # Mirrors the [Theme] name used by the look-and-feel package so the shell and
 # the global theme agree on first login.
+#
+# name=furryos, NOT name=breeze:
+#   * "breeze" is not a Plasma desktop theme in 5.27 (the packages install
+#     `default` plus the breeze-light/breeze-dark colour variants), so Plasma
+#     silently fell back to `default` and the panel kept Breeze's colours;
+#   * assets/desktop/plasma-theme/furryos is installed to
+#     /usr/share/plasma/desktoptheme/furryos by hook 6110.
+# Reproduce the old failure with:
+#     plasma-apply-desktoptheme breeze
+#   -> Could not find theme "breeze". The theme should be one of the following
+#      options: air, default, breeze-dark, breeze-light, furryos, oxygen
+# and the fix with:
+#     plasma-apply-desktoptheme furryos
+#   -> The current Plasma session's theme has been set to furryos
 
 [Theme]
-name=breeze
+name=furryos
 
 [Wallpaper]
 defaultWallpaperTheme=FurryOS

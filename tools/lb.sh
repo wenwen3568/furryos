@@ -4,50 +4,81 @@
 # Host constraints that force this wrapper:
 #
 #   * /usr tree and dpkg database are read-only -> live-build and debootstrap
-#     run from workspace-local extractions instead of apt install.
+#     run from workspace-local extractions (tools/prepare-toolchain.sh) instead
+#     of apt install.
 #
-#   * /root/furryos is mounted nodev. debootstrap's default
-#     setup_devices_simple() runs mknod, which *succeeds* on a nodev mount but
-#     produces a character device that cannot be opened. Every package
-#     postinst that redirects to /dev/null then fails with
-#     "Permission denied" (base-files, dpkg, libc6, procps ...).
+#   * <repo> is mounted nodev. debootstrap's default setup_devices_simple()
+#     runs mknod, which *succeeds* on a nodev mount but produces a character
+#     device that cannot be opened. Every package postinst that redirects to
+#     /dev/null then fails with "Permission denied" (base-files, dpkg, libc6,
+#     procps ...).
 #
-#     Fix: tools/rootfs/usr/share/debootstrap/functions has setup_devices()
-#     patched so the non-container branch calls setup_devices_bind(), which
-#     bind-mounts the host's working /dev devices into the chroot. That patch
-#     is only reachable when debootstrap does NOT think it is inside a
-#     container, so this wrapper deliberately does not export container=lxc.
+#     Fix: tools/prepare-toolchain.sh patches debootstrap's functions so the
+#     non-container branch uses setup_devices_bind(), which bind-mounts the
+#     host's working /dev devices into the chroot. That patch is only reachable
+#     when debootstrap does NOT think it is inside a container, so this wrapper
+#     deliberately does not export container=lxc.
 #
 #   * live-build's Chroot() enters the chroot with `env -i`, wiping the host
 #     environment. build/config/environment.chroot re-declares
 #     FURRYOS_BIND_DEVICES=1 so the bind-mount fallback also stays active for
 #     every later chroot stage.
 #
-# Workspace-local extractions:
-#   * live-build 20230502 (Debian)   -> tools/rootfs/usr/lib/live
-#   * debootstrap 1.0.144ubuntu1     -> merged scripts incl. the noble suite
-#   * ubuntu-keyring                 -> tools/rootfs/usr/share/keyrings
-LBROOT=/root/furryos/tools
-BUILD=/root/furryos/build
-export DEBOOTSTRAP_DIR="$LBROOT/rootfs/usr/share/debootstrap"
+#   * /etc/mtab is a symlink into the read-only /proc, so a SUCCESSFUL mount
+#     still exits 16 ("failed to update userspace mount table"). tools/shim/mount
+#     turns every mount into `mount -n`, which is the same mount(2) without the
+#     mtab write.
+#
+# Everything is located relative to this script, so the wrapper works in any
+# clone directory (earlier versions hard-coded /root/furryos).
+
+SELF_DIR="$(cd "$(dirname "$0")" && pwd)"
+WS="$(cd "${SELF_DIR}/.." && pwd)"
+LBROOT="${WS}/tools"
+BUILD="${WS}/build"
+
+export DEBOOTSTRAP_DIR="${LBROOT}/rootfs/usr/share/debootstrap"
 export FURRYOS_BIND_DEVICES=1
 
-BIN="$LBROOT/shim"
-mkdir -p "$BIN"
-cat > "$BIN/cat" <<'SHIM'
+# Which live-build sub-command is this? (first argument that is not an option)
+COMMAND=""
+for _arg in "$@"; do
+	case "${_arg}" in
+	-*) ;;
+	*) COMMAND="${_arg}"; break ;;
+	esac
+done
+
+# --- toolchain ------------------------------------------------------------
+# tools/rootfs, tools/lbroot and tools/shim are gitignored build dependencies;
+# regenerate them if a fresh clone (or a manual cleanup) left them missing.
+if [ ! -x "${LBROOT}/rootfs/usr/bin/lb" ] \
+	|| [ ! -d "${LBROOT}/lbroot/usr/lib/live/scripts/build" ] \
+	|| [ ! -x "${LBROOT}/shim/mount" ]
+then
+	echo "[furryos-lb] 工具链不完整，先运行 tools/prepare-toolchain.sh" >&2
+	bash "${LBROOT}/prepare-toolchain.sh" || exit 1
+fi
+
+# --- cat shim -------------------------------------------------------------
+# live-build reads /usr/share/live/build/VERSION and friends, which only exist
+# in the unpacked tree on a host where live-build is not installed as a package.
+BIN="${LBROOT}/shim"
+mkdir -p "${BIN}"
+cat > "${BIN}/cat" <<SHIM
 #!/bin/bash
-for a in "$@"; do
-  case "$a" in
+for a in "\$@"; do
+  case "\$a" in
     /usr/share/live/build/*|/usr/share/keyrings/*|/usr/share/debootstrap/*)
-      exec /bin/cat "${a/\/usr\/share//root/furryos/tools/rootfs/usr/share}" ;;
+      exec /bin/cat "\${a/\\/usr\\/share/${LBROOT}/rootfs/usr/share}" ;;
   esac
 done
-exec /bin/cat "$@"
+exec /bin/cat "\$@"
 SHIM
-chmod +x "$BIN/cat"
+chmod +x "${BIN}/cat"
 
-export PATH="$BIN:$LBROOT/rootfs/usr/bin:$LBROOT/rootfs/usr/sbin:$LBROOT/rootfs/usr/share/live/build:$PATH"
-export LIVE_BUILD="$LBROOT/lbroot/usr/lib/live"
+export PATH="${BIN}:${LBROOT}/rootfs/usr/bin:${LBROOT}/rootfs/usr/sbin:${LBROOT}/rootfs/usr/share/live/build:${PATH}"
+export LIVE_BUILD="${LBROOT}/lbroot/usr/lib/live"
 
 # Ensure the chroot's /dev devices are usable before every invocation.
 #
@@ -99,6 +130,17 @@ rebind_chroot_devices () {
 	done
 	return 0
 }
-rebind_chroot_devices
 
-exec "$LBROOT/rootfs/usr/bin/lb" "$@"
+# NEVER rebind before `lb clean`: the bind mounts make the chroot's /dev busy,
+# and clean then dies with
+#     rm: cannot remove 'chroot/dev/null': Device or resource busy
+# The same is true for commands that do not touch the chroot at all.
+case "${COMMAND}" in
+""|clean|config|help|version)
+	;;
+*)
+	rebind_chroot_devices
+	;;
+esac
+
+exec "${LBROOT}/rootfs/usr/bin/lb" "$@"

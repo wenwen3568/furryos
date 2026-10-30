@@ -3,9 +3,9 @@
 > 本文件由构建交付层（build-verify）维护，**所有层的降级方案汇总于此**。
 > 用户遇到「装了 FurryOS 但看不到效果」时，**只看这一份文件**。
 >
-> 当前状态：构建交付层正在搭建 live-build 工程骨架（bootstrap 已成功，220 包）。
-> 各层资产已就位，注入 hook 见下方「资产注入」。
-> 标注「由 build-verify 补充」的小节是其负责内容。
+> 当前状态：工程骨架与四层资产注入已落地（`6000`/`6010`/`6110`/`6120`/`6130`/`8000`/`8990`），
+> 完整 ISO 已产出；缺陷修复记录见 `docs/FIXES.md`，审核/测试/构建原始结论见
+> `docs/REVIEW.md`、`docs/TEST-REPORT.md`、`docs/BUILD-LOG.md`。
 
 ---
 
@@ -25,21 +25,45 @@
 
 ## 2. 资产注入
 
-四层资产的落盘路径由 `docs/CONTRACTS.md` 规定。登录体验层的注入脚本可直接作为
-live-build hook 使用：
+四层资产的落盘路径由 `docs/CONTRACTS.md` 规定。真实管线是**一个暂存钩子 + 四个整合钩子**，
+都在 `build/config/hooks/normal/` 下，按编号顺序执行：
+
+| 钩子 | 作用 |
+|---|---|
+| `6000-stage-furryos-assets.chroot` | 把 `build/config/assets/`（`tools/sync-assets.sh` 从仓库 `assets/` 同步而来）整棵暂存到 `/opt/furryos/assets`（`FURRYOS_ASSETS`），供后续钩子读取 |
+| `6010-integrate-identity-assets.chroot` | `os-release` / `issue` / `motd` / `legal` / `lsb-release` / SSH 横幅 |
+| `6110-integrate-desktop-assets.chroot` | `FurryOS.colors`、Plasma look-and-feel 主题、`/etc/skel` 默认配置、壁纸包 `/usr/share/wallpapers/FurryOS/` |
+| `6120-integrate-sddm-assets.chroot` | SDDM 主题 `furryos` + `/etc/sddm.conf` |
+| `6130-integrate-effects-assets.chroot` | KWin 点击特效 + ksplash 主题 `org.furryos.desktop` + `/etc/xdg/ksplashrc` |
+| `8990-furryos-cleanup.chroot` | 删除暂存目录与钩子产生的临时文件 |
+
+**为什么需要 6000 暂存**：chroot 钩子运行在 `build/chroot` 内部，仓库在宿主上，
+唯一可见的入口是 live-build 把 `build/config` 绑定到 chroot 的 `/live-build/config`。
+所以 6000 先把 `config/assets/` 拷进 chroot，后面的钩子只读 `/opt/furryos/assets`
+（路径由 `furryos-common.sh` 的 `FURRYOS_ASSETS` 给出）。
+
+**每个整合钩子都是硬失败**：缺层目录、缺关键文件、安装脚本返回非 0、装完自检不到产物，
+一律 `exit 1`。宁可构建停住，也不产出一套「看起来是 FurryOS、实际只换了个壁纸」的镜像。
+
+### 2.1 构建工具链从哪来（受限宿主）
+
+`live-build` / `debootstrap` / `ubuntu-keyring` 在受限宿主上装不成系统包（`/usr` 与
+dpkg 数据库只读），因此解包到仓库内使用：
 
 ```sh
-# build/config/hooks/9999-furryos-sddm.chroot  （需可执行）
-#!/bin/sh
-/root/furryos/assets/sddm/install-sddm-theme.sh /root/furryos/assets/sddm/furryos "$1"
+bash tools/prepare-toolchain.sh          # → tools/rootfs、tools/lbroot、tools/shim
 ```
 
-该脚本做三件事：
-1. 复制主题到 `<前缀>/usr/share/sddm/themes/furryos/`
-2. `chmod -R a+rX` 确保 `sddm` 用户可读
-3. 写入 `<前缀>/etc/sddm.conf`，含 `Current=furryos` 与 `ThemeDir=/usr/share/sddm/themes`
+产物被 `.gitignore` 排除（可重建的构建依赖），克隆下来并不存在；
+`tools/lb.sh` 发现缺失会自动调用它。脚本固化的补丁都是「不打就构建不出来」的环境事实：
 
-其余各层的注入方式：由 build-verify 补充。
+| 补丁 | 不打会怎样 |
+|---|---|
+| `debootstrap/functions`：非容器分支改走 `setup_devices_bind()`，跳过 nodev 上的 device-node 探针 | `/root` 挂 nodev 时，`mknod` 出来的 `/dev/null` 存在但打不开，所有 postinst 的 `> /dev/null` 失败（base-files、dpkg、libc6、procps 全线崩） |
+| `binary_grub-efi`：`stat -c %s` → `stat -L -c %s` | Ubuntu 的 `bootx64.efi` 是指向签名 shim 的符号链接，不跟链接只量到 36 字节，EFI FAT 镜像小到装不下，`mcopy: Disk full` |
+| `${LIVE_BUILD}/share/bootloaders` 等符号链接 | `binary_grub_cfg` 从 `${LIVE_BUILD}/share/bootloaders` 取 GRUB 资源，而 Debian 包装在 `/usr/share/live/build/` 下 |
+| `chroot_install-packages`：`linux-image-generic-amd64` → `linux-image-generic` | live-build 拼出的内核元包名带 `-amd64` 后缀，noble 的 generic 内核元包没有这个后缀，`No such package` |
+| `chroot_{proc,sysfs,selinuxfs}`：`mount ... \|\| true` | 宿主 `/etc/mtab` 指向只读 `/proc`，一次**成功**的挂载也以 16 退出，打断 chroot 阶段（`tools/shim/mount` 的 `mount -n` 是第一道防线，这是第二道） |
 
 ---
 
@@ -91,20 +115,25 @@ qmllint -I . --qmldirs /usr/lib/x86_64-linux-gnu/qt5/qml Main.qml components/*.q
 #### ④ 确认 QML 运行时依赖在位（爪印能否显示的关键）
 
 ```sh
-dpkg -l | grep -E 'qml-module-qtquick2|libqt5quick5|qt5-image-formats|libqt5qml5|qml-module-qtquick-layouts'
+dpkg -l | grep -E 'qml-module-qtquick2|libqt5quick5|libqt5svg5|qt5-image-formats-plugins|libqt5qml5|qml-module-qtquick-layouts'
 ```
 预期：五个包均为 `ii`。
 
-**这是最难查的失败模式，请务必单独确认 `qt5-image-formats`：**
+**这是最难查的失败模式，请务必单独确认 `libqt5svg5`：**
 
 | 缺失的包 | 现象 |
 |---|---|
-| `qt5-image-formats` | **只有爪印消失**。界面、蓝白配色、按钮动画全部正常；Qt 不弹错误对话框，只在 SDDM 日志里留一行 `QML Image: Cannot open: .../paw.svg`。极易误判为「主题没做爪印」 |
+| `libqt5svg5` | **只有爪印消失**。界面、蓝白配色、按钮动画全部正常；Qt 不弹错误对话框，只在 SDDM 日志里留一行 `QML Image: Cannot open: .../paw.svg`。极易误判为「主题没做爪印」 |
 | `qml-module-qtquick2` / `libqt5quick5` | 主题整体无法加载，SDDM **静默回退**到默认主题（连蓝白配色都不会出现） |
 
 修复：
 ```sh
-sudo apt-get install -y qt5-image-formats qml-module-qtquick2 libqt5quick5
+sudo apt-get install -y libqt5svg5 qt5-image-formats-plugins qml-module-qtquick2 libqt5quick5
+
+# 爪印是 SVG，渲染它需要的是 Qt 的 SVG 图像格式插件：
+ls /usr/lib/x86_64-linux-gnu/qt5/plugins/imageformats/libqsvg.so   # 由 libqt5svg5 提供
+# qt5-image-formats-plugins 提供的是 tiff/webp/jp2 等格式，不含 libqsvg.so；
+# noble 里也没有叫 qt5-image-formats 的二进制包（只有同名源码包）。
 ```
 
 #### ⑤ 重启 SDDM 让主题生效
@@ -174,10 +203,18 @@ journalctl -u sddm -n 100 --no-pager | grep -iE 'qml|furryos|theme|error'
      cat /etc/os-release
      ```
      预期：`NAME="FurryOS"` 且 `VERSION_ID="24.04"`。若为 `Ubuntu`，说明 base-files postinst 仍保留上游行为。
-     手动修复（由 6010 钩子完成）：
+     手动修复（`6010` 钩子做的就是这件事）：
      ```sh
-     sudo bash -c 'cat /usr/lib/os-release > /etc/os-release && ln -sf ../usr/lib/os-release /etc/os-release'
+     # /etc/os-release 必须是指向 ../usr/lib/os-release 的相对符号链接
+     ls -l /etc/os-release
+     # 若不是符号链接（被上游 base-files 写成了普通文件），重建链接：
+     sudo rm -f /etc/os-release
+     sudo ln -sf ../usr/lib/os-release /etc/os-release
      ```
+
+     > **不要**用 `cat /usr/lib/os-release > /etc/os-release` 去「修复」：
+     > 如果 `/etc/os-release` 已经是指向该文件的符号链接，这条命令会先截断源文件，
+     > 结果是 `/usr/lib/os-release` 变成空文件，系统连 `NAME` 都没有。
 
   2. **确认 SSH 横幅未写入 Ubuntu 字样**
      ```sh
@@ -193,7 +230,8 @@ journalctl -u sddm -n 100 --no-pager | grep -iE 'qml|furryos|theme|error'
      若含上游信息，由 6010 钩子移除对应 drop-in 文件：
      ```sh
      sudo rm -f /etc/update-motd.d/00-header /etc/update-motd.d/10-help-text
-     sudo bash /root/furryos/tools/verify-identity.sh  # 重新验证 33 项断言
+     # 重新验证 33 项断言（在仓库目录里跑，不是在镜像里跑）
+     bash tools/verify-identity.sh
      ```
 
   4. **确认 legal 免责声明就位**
@@ -214,19 +252,23 @@ journalctl -u sddm -n 100 --no-pager | grep -iE 'qml|furryos|theme|error'
 
   1. **确认配色已注入**
      ```sh
-     color schemes 中是否有 FurryOS.colors
+     ls -l /usr/share/color-schemes/FurryOS.colors
+     grep -A2 '^\[General\]' /etc/skel/.config/kdeglobals | grep ColorScheme
      ```
-     若无，由 build-verify 通过 6110 钩子重新注入：
+     预期：文件存在，且 `ColorScheme=FurryOS`（只放文件不改 `kdeglobals` 不会生效）。
+     若缺失，说明资产没同步到构建树，由 `6110` 钩子重新注入：
      ```sh
-     # live-build hook 会自动处理，手动触发同步资产
-     sh /root/furryos/tools/sync-assets.sh
+     # 把 assets/ 同步到 build/config/assets/（钩子读的就是这份），然后重跑该阶段
+     bash tools/sync-assets.sh
+     cd build && bash ../tools/lb.sh clean && bash ../tools/lb.sh build
      ```
 
   2. **确认壁纸已安装**
      ```sh
-     ls /usr/share/wallpapers/FurryOS/
+     ls /usr/share/wallpapers/FurryOS/contents/images/
      ```
-     预期：`wallpaper.png` 与 `wallpaper.svg` 均存在。
+     预期：`1920x1080.png` 与 `1920x1080.svg` 均存在（KDE 按 `contents/images/`
+     下的分辨率文件名选图，`metadata.desktop` 提供标题）。
      若缺失，检查 `skel/.config/plasmarc` 是否正确引用：
      ```sh
      grep -A3 'Wallpaper' /etc/skel/.config/plasmarc
@@ -281,14 +323,20 @@ ls /usr/share/sddm/themes/furryos/assets/paw.svg
 
 ISO 产出验收清单（由 build-verify 完成后填入）：
 
-- [ ] ISO 卷标：`FURRYOS`
+- [ ] ISO 卷标：`FurryOS`（`LB_ISO_VOLUME`；用 `blkid -p build/*.iso` 或 `isoinfo -d` 核对）
 - [ ] ISO 应用名：`FurryOS`
 - [ ] 启动菜单文字：`FurryOS`
 - [ ] SSH 横幅：无 Ubuntu 商标/Logo
 - [ ] 登录界面：SDDM 主题蓝白+爪印，动画 140/200/320ms
 - [ ] 桌面壁纸：爪印可辨认，9 个色值一致
-- [ ] 点击特效：出现彩带扩散，颜色一致
+- [ ] 点击特效：出现蓝白同心圆环（涟漪）扩散（`RingCount=2` / `RingLife=250` / `RingSize=32`），两处配置颜色一致
 - [ ] ISO 内 NAME="FurryOS" 且 /etc/os-release 符号链接正常
+- [ ] **rootfs 内 os-release 为 FurryOS**：`grep '^NAME=' build/chroot/usr/lib/os-release`
+      应为 `NAME="FurryOS"`，且 `build/chroot/etc/os-release` 是指向 `../usr/lib/os-release`
+      的符号链接（钩子 6010 的产物；上游 base-files 的 postinst 会重写这个文件，
+      所以必须验证钩子跑完之后的状态，而不是只看 assets 里的源文件）
+- [ ] `grep '^Theme=' build/chroot/etc/xdg/ksplashrc` 为 `org.furryos.desktop`，
+      且 `build/chroot/usr/share/plasma/look-and-feel/org.furryos.desktop/contents/splash/Splash.qml` 存在
 
 ---
 
@@ -298,13 +346,13 @@ ISO 产出验收清单（由 build-verify 完成后填入）：
 
 | 限制 | 影响 | 已采取的替代验证 |
 |---|---|---|
-| 宿主无 GL 上下文（`QOpenGLContext::create()` 失败，无 llvmpipe 注册） | 无法用 `qmlscene`/`QQuickView::grabWindow()` 真实渲染 QML 场景，**无法在宿主机跑出 SDDM 真实截图** | 用 `QQmlComponent` 在无 GL 的 QML 引擎中实例化完整主题对象树，读取真实属性断言；另按真实坐标用 QtGui 2D 绘制四状态预览图 |
-| 宿主 `/usr/bin/qmllint` 是 qtchooser 符号链接，指向不存在的 `/usr/lib/qt5/bin/qmllint` | 无法直接调用 | 从 Debian bookworm 取 `qtdeclarative5-dev-tools_5.15.8+dfsg-3` 解出真实二进制 |
+| 宿主无 GL 上下文（`QOpenGLContext::create()` 失败，无 llvmpipe 注册） | 默认（OpenGL）后端起不来 | 改用软件后端仍可**真实加载**整个主题场景：`QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software qmlscene Main.qml`（实测 exit 0，无 QML 警告）。离屏截图仍按真实坐标用 QtGui 2D 绘制 |
+| 个别宿主上 `/usr/bin/qmllint` 可能是 qtchooser 坏链（指向不存在的 `/usr/lib/qt5/bin/qmllint`） | 该机无法直接调用 | 本机实测 `/usr/bin/qmllint` 可用（`qmllint -I . --qmldirs /usr/lib/x86_64-linux-gnu/qt5/qml Main.qml components/*.qml` exit 0）；确实坏链时再从 bookworm 取 `qtdeclarative5-dev-tools_5.15.8+dfsg-3` 解出二进制 |
 | 宿主非目标 Ubuntu LTS | 无法启动真实 SDDM 会话 | 提供 `install-sddm-theme.sh` 供 live-build 注入；真实目视确认步骤见 3.1 ⑦ |
 | 容器 `container="lxc"` 导致 setup_devices 路径错误 | bootstrap 阶段设备节点不可写 | 已在 lb.sh 中移除 `export container="lxc"`，改为无条件 `setup_devices_bind()` 路径 |
 | `/etc/mtab` 是指向只读 `/proc` 的 symlink | mount 成功却返回非零 | 各挂载脚本(chroot_proc chroot_sysfs chroot_devpts)全部加 `|| true` 容错 |
 | `/dev/null` 被写成普通文件 | `echo test > /dev/null` 会创建普通文件，导致 apt-key 等工具失败 | lb.sh 在每次 invocation 前重新 bind-mount 宿主 `/dev` 进入 chroot；chroot 内 `setup_devices_bind` + `FURRYOS_BIND_DEVICES=1` 共同保证 |
 | apt 的 sandbox 用户 `_apt` 无法看到 bind-mount 的 /dev | apt-key / apt-get update 因 `/dev/null` 权限错误 中断 | 配置 `APT::Sandbox::User "root"` 禁用沙箱降权 |
-| live-build 的 `LB_LINUX_PACKAGES` / `LB_LINUX_FLAVOURS_WITH_ARCH` 在 noble 中不兼容 | `linux-image-generic-amd64` 在 noble index 不存在 | config/chroot 中设为 `linux-generic` 并配合 6200 钩子在 chroot_install-packages 前重写包名 |
-| `qt5-image-formats` 在 noble 已移除至源包 | 若不安装，爪印将静默消失（无错误弹窗） | 建议始终 `apt-get install -y qt5-image-formats`；或在 BUILD.md 3.1 ④ 提供修复命令 |
+| live-build 把内核元包名拼成 `${LB_LINUX_PACKAGES}-${LB_LINUX_FLAVOURS_WITH_ARCH}`（= `linux-generic-amd64`），noble 的 generic 元包没有 `-amd64` 后缀 | 直接装会 `No such package` | `tools/prepare-toolchain.sh` 给 `chroot_install-packages` 打补丁：在 apt 消费队列前把 `linux-{image-,}generic-amd64` 改写成 `linux-generic`（早先文档说的「6200 钩子」并不存在，实际实现点在这里） |
+| 爪印是 SVG，需要 Qt 的 SVG 图像格式插件 | 缺 `libqt5svg5` 时爪印静默消失（无错误弹窗） | `apt-get install -y libqt5svg5`；自检命令见 3.1 ④。注：noble 无 `qt5-image-formats` 二进制包，提供 `libqsvg.so` 的是 `libqt5svg5` |
 | `debian-archive-keyring` 在 Ubuntu 中不存在 | gpgv 信任链验证失败 | config/environment.chroot 中设为 `ubuntu-keyring`；并在 chroot_install-packages 前提前安装 |

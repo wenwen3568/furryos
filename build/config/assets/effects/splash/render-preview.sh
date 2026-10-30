@@ -71,20 +71,24 @@ parts.append(paw('#1A6FD4', 0.07, 1500, 700, 2.2))
 parts.append(paw('#1A6FD4', 0.05, 120, 120, 1.6))
 parts.append(paw('#FFFFFF', 0.96, 810, 300, 1.0))
 
+# 字标/副标语/进度条的颜色必须与 furryos-splash.svg 同步：
+#   y=700 处渐变已是浅蓝 (157,193,239)，白字只有 1.8:1 → 用 furryos-blue-deep
+#   副标语 #0F4C8C（5.2:1）
+#   进度条 #1A6FD4（y=903 处背景 ≈ (239,245,255)，4.5:1）
 parts.append(
-    "push graphic-context fill #FFFFFF font \"%s\" font-size %.2f gravity center "
+    "push graphic-context fill #0A3568 font \"%s\" font-size %.2f gravity center "
     "text 0,%.2f \"FurryOS\" pop graphic-context"
     % (BOLD, 96*S, (700-540)*S)
 )
 parts.append(
-    "push graphic-context fill #EAF2FF font \"%s\" font-size %.2f gravity center "
+    "push graphic-context fill #0F4C8C font \"%s\" font-size %.2f gravity center "
     "text 0,%.2f \"蓝白之间，轻快回应\" pop graphic-context"
     % (CJK, 30*S, (762-540)*S)
 )
 parts.append(
-    "push graphic-context fill #FFFFFF fill-opacity 0.28 "
+    "push graphic-context fill #1A6FD4 fill-opacity 0.18 "
     "rectangle %.2f,%.2f %.2f,%.2f "
-    "fill #FFFFFF fill-opacity 1.0 "
+    "fill #1A6FD4 fill-opacity 1.0 "
     "rectangle %.2f,%.2f %.2f,%.2f "
     "pop graphic-context"
     % (660*S, 900*S, 1260*S, 906*S, 660*S, 900*S, 900*S, 906*S)

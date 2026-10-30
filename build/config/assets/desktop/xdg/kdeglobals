@@ -1,0 +1,42 @@
+# FurryOS 系统级 KDE 默认值（安装到 /etc/xdg/kdeglobals）。
+#
+# 为什么需要这一份，而不是只靠 /etc/skel/.config/kdeglobals：
+#   * /etc/skel 只在该用户「被创建」时复制一次。live 会话的 user 由
+#     live-config 在启动时创建（会复制 skel），但已存在的家目录、
+#     以及安装到磁盘后手工加的用户都不再读 skel；
+#   * /etc/xdg/kdeglobals 是 KDE 的系统级配置层，任何会话都会先读它，
+#     用户自己的 ~/.config/kdeglobals 再覆盖同名键。
+#
+# [KDE] LookAndFeelPackage 是「全局主题」的选择键，不是装饰：
+#   Plasma 5.27 在首次登录时会按这个键应用对应的 Look-and-Feel 包，并把
+#   结果写进 ~/.config/kdedefaults/。键缺失时它应用的是上游默认包
+#   org.kde.breeze.desktop —— 于是壁纸变成 Breeze 的 Next、Plasma 主题
+#   变成 default、图标变成 breeze，/etc/skel 里那套 FurryOS 配置被覆盖。
+#   实测（docs/FIXES-ROUND2.md §3）：
+#     无此键 -> kdedefaults/package=org.kde.breeze.desktop，桌面 RMSE 对
+#               FurryOS 壁纸 0.365、对 Next 0.089（即 Next）
+#     有此键 -> kdedefaults/package=com.furryos.lookandfeel，桌面 RMSE 对
+#               FurryOS 壁纸 0.056、对 Next 0.432（即 FurryOS）
+#   该键必须与 assets/desktop/skel/.config/kdeglobals 里的值一致，
+#   assets/desktop/.tools/verify-consistency.py 会断言。
+#
+# 文件权限：/etc/xdg 下的一切都必须是非 root 可读的（0644）。曾经因为
+# 资产文件是 0600，装出来 org.furryos.desktop 的 Splash.qml 与
+# com.furryos.lookandfeel/metadata.desktop 普通用户读不到，ksplashqml
+# 读 QML 失败后空指针崩溃、Plasma 也回落到 Breeze。
+
+[General]
+ColorScheme=FurryOS
+
+[KDE]
+LookAndFeelPackage=com.furryos.lookandfeel
+widgetStyle=Breeze
+
+[Icons]
+Theme=FurryOS
+
+# 点击特效的开关镜像（KWin 实际读 /etc/xdg/kwinrc 的 [Plugins]，见
+# assets/effects/click-effect/README.md；这里只是让读取 kdeglobals 的工具
+# 也能看到同一事实）。
+[Effects]
+Click=true

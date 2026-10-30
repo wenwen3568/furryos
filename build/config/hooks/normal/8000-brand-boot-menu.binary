@@ -28,18 +28,34 @@
 # so every generated file is present and the grub ESP image (efi.img) has
 # already been built from them.
 #
-# IMPORTANT LIMITATION (recorded in docs/BUILD.md):
-#   The grub EFI image binary/boot/grub/efi.img embeds a *copy* of grub.cfg
-#   inside a FAT filesystem, created by binary_grub-efi BEFORE this hook runs.
-#   Patching binary/boot/grub/grub.cfg therefore does NOT change what the
-#   UEFI firmware actually loads from the ESP image. The authoritative copy
-#   is the one inside efi.img, and this hook patches that copy too by
-#   extracting, editing and re-injecting it with mtools.
+# THE EFI SYSTEM PARTITION (efi.img) IS NOT TOUCHED - AND MUST NOT BE
+# -------------------------------------------------------------------
+# binary_grub-efi puts a THREE-LINE STUB in the ESP's /boot/grub/grub.cfg:
+#
+#     search --set=root --file /.disk/info
+#     set prefix=($root)/boot/grub
+#     configfile ($root)/boot/grub/grub.cfg
+#
+# Its only job is to move $root from the ESP (a FAT image that contains no
+# kernel and no menu) to the ISO partition that holds /.disk/info, and then
+# chain to the real menu. Replacing that stub with a copy of the ISO's
+# grub.cfg - which starts with `source /boot/grub/config.cfg` and refers to
+# `linux /live/vmlinuz-*` relative to $root - makes every UEFI boot fail with
+# "file not found": $root is still the ESP, where neither file exists.
+# An earlier version of this hook did exactly that (mdel + mcopy) and shipped
+# a BIOS-only bootable ISO. Do not reintroduce it.
+#
+# What this hook does instead: it patches the ISO-side menus (which the ESP
+# stub chain-loads) and asserts that the ESP stub is still intact, so a
+# regression is caught at build time.
 #
 # WHAT IT REPLACES
 #   * "Debian GNU/Linux" -> "FurryOS"        (binary_syslinux _PROJECT)
 #   * "Live system ("    -> "FurryOS Live (" (grub menuentry labels)
 #   * leftover "Debian" strings in any generated .cfg
+#   * binary/.disk/info  -> "FurryOS ..." (upstream writes "Debian GNU/Linux")
+#     The file's CONTENT is free-form; its existence is what the ESP stub's
+#     `search --file /.disk/info` needs. So it can be rebranded safely.
 
 set -e
 
@@ -86,35 +102,147 @@ for F in boot/grub/*.cfg; do
 	       "${F}"
 done
 
-# ---------------------------------------------------- grub EFI image (efi.img) --
-# binary/boot/grub/efi.img is a FAT image built by binary_grub-efi from a
-# *copy* of boot/grub/grub.cfg. UEFI firmware loads the grub inside the ESP,
-# which resolves to this copy, so the on-disk boot/grub/grub.cfg is not what
-# the user sees when booting the ISO over UEFI. Re-inject the branded copy.
-if [ -f boot/grub/efi.img ] && [ -f boot/grub/grub.cfg ]
+# ------------------------------------------- kernel/initrd paths (UEFI boot) --
+# live-build's binary_grub_cfg writes the menu entries as
+#
+#     linux  /live/vmlinuz-*${DEFAULT_FLAVOUR}
+#     initrd /live/initrd.img-*${DEFAULT_FLAVOUR}
+#
+# where DEFAULT_FLAVOUR comes from LB_LINUX_FLAVOURS_WITH_ARCH. This image sets
+# that to "amd64" (the Debian flavour name), but the installed Ubuntu kernel is
+# vmlinuz-6.8.0-147-generic, so `basename chroot/boot/vmlinuz-*amd64` matches
+# nothing and live-build leaves the LITERAL glob in grub.cfg. GRUB cannot open
+# a wildcard path, so the UEFI default entry dies with
+#
+#     error: file `/live/vmlinuz-*amd64' not found.
+#     error: you need to load the kernel first.
+#
+# (BIOS is unaffected because syslinux's live.cfg uses the /live/vmlinuz
+# symlink that binary_linux-image creates. See docs/VM-VERIFY.md §4.)
+#
+# Fix: point both entries at those symlinks and prove they resolve. Rewriting
+# the two paths is deliberately preferred over changing LB_LINUX_FLAVOURS_*
+# to "generic": the flavour also feeds the kernel *package* name derivation in
+# chroot_linux-image / chroot_install-packages, where "generic" would break
+# the apt queue (the toolchain already renames linux-generic-amd64 ->
+# linux-generic for that reason).
+if [ -f boot/grub/grub.cfg ]
 then
-	if command -v mcopy >/dev/null 2>&1
+	sed -i -e 's|/live/vmlinuz-[^[:space:]]*|/live/vmlinuz|g' \
+	       -e 's|/live/initrd\.img-[^[:space:]]*|/live/initrd.img|g' \
+	       boot/grub/grub.cfg
+
+	# A surviving glob is exactly the UEFI blocker: fail the build instead of
+	# shipping an ISO whose default entry cannot boot.
+	LEFT="$(grep -n '/live/\(vmlinuz\|initrd\.img\)-\*' boot/grub/grub.cfg || true)"
+	if [ -n "${LEFT}" ]
 	then
-		# mcopy refuses to overwrite; remove first.
-		mdel -i boot/grub/efi.img ::boot/grub/grub.cfg 2>/dev/null || true
-		if mcopy -o -i boot/grub/efi.img boot/grub/grub.cfg ::boot/grub 2>/dev/null
+		echo "${LOG} ERROR: grub.cfg still contains an unexpanded kernel glob:" >&2
+		printf '%s\n' "${LEFT}" | sed 's/^/    /' >&2
+		exit 1
+	fi
+
+	if ! grep -q '/live/vmlinuz' boot/grub/grub.cfg || \
+	   ! grep -q '/live/initrd\.img' boot/grub/grub.cfg
+	then
+		echo "${LOG} ERROR: grub.cfg has no /live/vmlinuz + /live/initrd.img" \
+			"entry - UEFI would have nothing to boot." >&2
+		exit 1
+	fi
+
+	# The rewritten paths must resolve inside the ISO tree; a dangling
+	# symlink would produce the same "not found" error at boot time.
+	for F in live/vmlinuz live/initrd.img
+	do
+		if [ ! -e "${F}" ]
 		then
-			log "re-injected branded grub.cfg into boot/grub/efi.img"
-		else
-			log "WARNING: could not re-inject grub.cfg into efi.img (UEFI menu may still say 'Live system')"
+			echo "${LOG} ERROR: ${F} is missing from binary/ - grub.cfg" \
+				"would point at a kernel this ISO does not carry." >&2
+			exit 1
 		fi
+	done
+
+	log "grub.cfg kernel paths -> /live/vmlinuz + /live/initrd.img (both resolve)"
+fi
+
+# ------------------------------------------------- grub EFI image (efi.img) --
+# ASSERT ONLY. The ESP carries the 3-line stub described at the top of this
+# hook; replacing it breaks UEFI boot. Verify it is still the stub.
+if [ -f boot/grub/efi.img ]
+then
+	if command -v mtype >/dev/null 2>&1
+	then
+		ESP_CFG="$(mtype -i boot/grub/efi.img ::boot/grub/grub.cfg 2>/dev/null | tr -d '\r' | head -3)"
+		case "${ESP_CFG}" in
+		*"search --set=root --file /.disk/info"*"set prefix="*"configfile "*)
+			log "efi.img ESP stub intact (search + prefix + configfile)"
+			;;
+		*)
+			echo "${LOG} ERROR: boot/grub/efi.img does not contain the" \
+				"expected 3-line ESP stub - UEFI boot would break." >&2
+			echo "${LOG} ERROR: ESP /boot/grub/grub.cfg was:" >&2
+			printf '%s\n' "${ESP_CFG}" | sed 's/^/    /' >&2
+			exit 1
+			;;
+		esac
 	else
-		log "WARNING: mcopy not available; UEFI grub menu not rebranded"
+		log "WARNING: mtype (mtools) not available; cannot verify the ESP stub"
 	fi
 fi
 
 # --------------------------------------------------------------- iso volume --
-# The ISO volume ID is set from LB_ISO_VOLUME in config/binary (already
-# "FurryOS"). Nothing to patch here, but assert it so a regression in
-# config/binary is caught at build time rather than by the user.
-if [ -f /tmp/furryos-iso-volume-check ]
+# LB_ISO_VOLUME / LB_ISO_APPLICATION are consumed by binary_iso, which runs
+# AFTER binary_hooks, so the only thing this hook can do is assert the config
+# values that will be used. This replaces an earlier dead `if [ -f ... ]`
+# block that asserted nothing.
+assert_iso_config ()
+{
+	if [ -r "../config/binary" ]
+	then
+		_GOT="$(sed -n "s/^${1}=\"\\(.*\\)\"\$/\\1/p" ../config/binary | head -1)"
+		if [ "${_GOT}" = "${2}" ]
+		then
+			log "config/binary ${1}=\"${_GOT}\" OK"
+		else
+			echo "${LOG} ERROR: config/binary ${1}=\"${_GOT}\" (expected \"${2}\")" >&2
+			exit 1
+		fi
+	fi
+}
+
+assert_iso_config LB_ISO_VOLUME FurryOS
+assert_iso_config LB_ISO_APPLICATION FurryOS
+
+# ------------------------------------------------------------- .disk/info ----
+# binary_disk writes "${TITLE} ${VERSION} \"${DISTRIBUTION}\" - ${STRING} ..."
+# where TITLE is hard-coded to "Debian GNU/Linux" by live-build itself, so the
+# file ends up advertising Debian on an otherwise FurryOS image. Rewrite it,
+# keeping the SOURCE_DATE_EPOCH-derived timestamp for reproducibility.
+if [ -f .disk/info ]
 then
-	:
+	DISK_DATE="$(sed -n 's/.* \([0-9]\{8\}-[0-9][0-9]:[0-9][0-9]\)[[:space:]]*$/\1/p' .disk/info | head -1)"
+	DISK_DATE="${DISK_DATE:-$(date -u -d@"${SOURCE_DATE_EPOCH:-0}" +%Y%m%d-%H:%M 2>/dev/null || echo unknown)}"
+	DISK_PRETTY="FurryOS 24.04 LTS"
+	if [ -r ../chroot/usr/lib/os-release ]
+	then
+		_PRETTY="$(sed -n 's/^PRETTY_NAME="\(.*\)"$/\1/p' ../chroot/usr/lib/os-release | head -1)"
+		[ -n "${_PRETTY}" ] && DISK_PRETTY="${_PRETTY}"
+	fi
+	printf '%s - Live amd64 Binary %s\n' "${DISK_PRETTY}" "${DISK_DATE}" > .disk/info
+	log "rewrote .disk/info: $(cat .disk/info)"
+
+	case "$(cat .disk/info)" in
+	FurryOS*)
+		;;
+	*)
+		echo "${LOG} ERROR: .disk/info is not FurryOS-branded" >&2
+		exit 1
+		;;
+	esac
+else
+	echo "${LOG} ERROR: binary/.disk/info is missing - the ESP stub's" \
+		'search --file /.disk/info would never find the ISO partition.' >&2
+	exit 1
 fi
 
 log "boot menu branding pass complete"

@@ -29,25 +29,33 @@ furryos_log "Installing desktop visual layer from ${SRC}"
 
 if [ ! -d "${SRC}" ]
 then
-	furryos_warn "desktop layer not staged; skipping (system will keep Breeze defaults)"
-	exit 0
+	echo "${FURRYOS_LOG_TAG} ERROR: desktop layer not staged at ${SRC}" >&2
+	echo "${FURRYOS_LOG_TAG} ERROR: run tools/sync-assets.sh and check 6000-stage-furryos-assets.chroot" >&2
+	exit 1
 fi
 
 # --- colour scheme ---------------------------------------------------------
-if [ -e "${SRC}/FurryOS.colors" ]
-then
-	furryos_install_file "${SRC}/FurryOS.colors" \
-		/usr/share/color-schemes/FurryOS.colors 0644
-	furryos_log "installed /usr/share/color-schemes/FurryOS.colors"
-else
-	furryos_warn "desktop/FurryOS.colors missing"
-fi
+furryos_need_file "${SRC}/FurryOS.colors" "desktop colour scheme"
+furryos_install_file "${SRC}/FurryOS.colors" \
+	/usr/share/color-schemes/FurryOS.colors 0644
+furryos_log "installed /usr/share/color-schemes/FurryOS.colors"
 
 # --- wallpaper -------------------------------------------------------------
 # KDE looks for wallpapers under /usr/share/wallpapers/<name>/contents/images/
 # and reads <name>/metadata.desktop for the title. Both layouts are accepted:
 # a bare wallpaper.png (installed into a FurryOS package dir) and a full
 # directory already containing metadata.desktop + contents/.
+#
+# The source MUST be there: an `if [ -d ]` that silently does nothing would let
+# a mis-synced asset tree ship an image whose desktop falls back to Breeze -
+# and the post-install assertion further down cannot catch it, because the
+# target path may still hold a wallpaper from an earlier build.
+if [ ! -d "${SRC}/wallpapers/FurryOS/contents/images" ]
+then
+	furryos_need_file "${SRC}/wallpapers/FurryOS/contents/images/1920x1080.png" \
+		"FurryOS wallpaper package (run tools/sync-assets.sh)"
+fi
+
 if [ -d "${SRC}/wallpapers" ]
 then
 	furryos_install_dir "${SRC}/wallpapers" /usr/share/wallpapers
@@ -92,17 +100,59 @@ then
 	furryos_log "installed plasma desktop theme"
 fi
 
+# --- icon theme ------------------------------------------------------------
+# The look-and-feel defaults and /etc/skel/.config/kdeglobals both name the
+# FurryOS icon theme (assets/desktop/icons/FurryOS/index.theme, Inherits=breeze
+# so every icon still resolves through the installed Breeze set).
+# This has to be installed together with those two files: a `[Icons]
+# Theme=FurryOS` without the theme directory is worse than leaving it at
+# `breeze`, because KIconLoader would then start from a missing theme.
+if [ -d "${SRC}/icons" ]
+then
+	furryos_install_dir "${SRC}/icons" /usr/share/icons
+	furryos_log "installed icon theme packages"
+fi
+furryos_need_file /usr/share/icons/FurryOS/index.theme \
+	"installed FurryOS icon theme (run tools/sync-assets.sh)"
+
 # --- /etc/skel per-user defaults ------------------------------------------
 # CONTRACTS.md gives /etc/skel/.config/kdeglobals to desktop-visual, so the
 # file is installed only if the layer actually produced one. build-verify
 # never writes kdeglobals itself.
-if [ -d "${SRC}/skel" ]
-then
-	furryos_install_dir "${SRC}/skel" /etc/skel
-	furryos_log "merged assets/desktop/skel into /etc/skel"
-else
-	furryos_warn "desktop/skel not present; new users will not get the FurryOS colour scheme"
-fi
+furryos_need_file "${SRC}/skel/.config/kdeglobals" "per-user KDE defaults"
+furryos_install_dir "${SRC}/skel" /etc/skel
+# assets/desktop/skel/README.md is developer documentation that lives next to
+# the files it describes; without this it would be copied into /etc/skel and
+# every new account would get a ~/README.md about the build.
+rm -f /etc/skel/README.md
+furryos_log "merged assets/desktop/skel into /etc/skel (skel/README.md excluded)"
+
+# Git does not preserve world-read permission bits. Under a builder's umask
+# 077, cp -a would otherwise install every QML/theme/config file as 0600 root,
+# making Plasma and ksplashqml fail in the unprivileged live session. Normalise
+# only FurryOS-owned trees, never the neighbouring Breeze/system packages.
+for SYS_TREE in \
+	/usr/share/plasma/look-and-feel/com.furryos.lookandfeel \
+	/usr/share/plasma/desktoptheme/furryos \
+	/usr/share/wallpapers/FurryOS \
+	/usr/share/icons/FurryOS \
+	/etc/skel
+do
+	[ -e "${SYS_TREE}" ] || continue
+	chmod -R a+rX,go-w "${SYS_TREE}"
+	BAD_MODES="$(find "${SYS_TREE}" -type d ! -perm -055 -print -quit; find "${SYS_TREE}" -type f ! -perm -044 -print -quit)"
+	if [ -n "${BAD_MODES}" ]
+	then
+		echo "${FURRYOS_LOG_TAG} ERROR: desktop assets are not world-readable/traversable: ${BAD_MODES}" >&2
+		exit 1
+	fi
+done
+furryos_log "desktop/skel asset permissions verified for unprivileged live users"
+
+# The wallpaper package must be present: the colour scheme alone does not put
+# a wallpaper on the desktop, and a missing package fails silently at runtime.
+furryos_need_file /usr/share/wallpapers/FurryOS/contents/images/1920x1080.png \
+	"installed wallpaper image"
 
 # --- system-wide default (defence in depth) -------------------------------
 # /etc/xdg/kdeglobals is read by every KDE session as a system-wide fallback
@@ -118,8 +168,37 @@ then
 # for the per-user variant owned by desktop-visual.
 [General]
 ColorScheme=FurryOS
+
+[KDE]
+LookAndFeelPackage=com.furryos.lookandfeel
 EOF
 	furryos_log "created /etc/xdg/kdeglobals defaulting ColorScheme=FurryOS"
 fi
+
+# Plasma 5.27 chooses the wallpaper from the active look-and-feel package.
+# A colour scheme plus [Wallpaper] in plasmarc is not enough: without this key
+# the live session silently falls back to org.kde.breeze.desktop / Next.
+# Enforce the system-wide fallback even when a base image supplied kdeglobals.
+if grep -q '^LookAndFeelPackage=' /etc/xdg/kdeglobals
+then
+	sed -i 's|^LookAndFeelPackage=.*|LookAndFeelPackage=com.furryos.lookandfeel|' /etc/xdg/kdeglobals
+elif grep -q '^\[KDE\]$' /etc/xdg/kdeglobals
+then
+	sed -i '/^\[KDE\]$/a LookAndFeelPackage=com.furryos.lookandfeel' /etc/xdg/kdeglobals
+else
+	printf '\n[KDE]\nLookAndFeelPackage=com.furryos.lookandfeel\n' >> /etc/xdg/kdeglobals
+fi
+
+furryos_need_file /usr/share/plasma/look-and-feel/com.furryos.lookandfeel/metadata.desktop \
+	"installed FurryOS look-and-feel package"
+grep -q '^LookAndFeelPackage=com.furryos.lookandfeel$' /etc/skel/.config/kdeglobals || {
+	echo "${FURRYOS_LOG_TAG} ERROR: /etc/skel/.config/kdeglobals does not select FurryOS look-and-feel" >&2
+	exit 1
+}
+grep -q '^LookAndFeelPackage=com.furryos.lookandfeel$' /etc/xdg/kdeglobals || {
+	echo "${FURRYOS_LOG_TAG} ERROR: /etc/xdg/kdeglobals does not select FurryOS look-and-feel" >&2
+	exit 1
+}
+furryos_log "live/new users and system fallback select com.furryos.lookandfeel"
 
 furryos_log "Desktop visual layer installed."

@@ -2,10 +2,11 @@
 #
 # verify-identity.sh — FurryOS 系统身份层静态校验（不启动真实系统）
 #
-# 用法：bash tools/verify-identity.sh
+# 用法：bash tools/verify-identity.sh [--no-fetch]
+#         --no-fetch  参考基线缺失时不要自动下载，直接报错退出
 #
 # 注意：本脚本使用了进程替换 <(...)，只能由 bash 执行。
-# 用 sh（dash）运行会在第 152 行报 Syntax error: "(" unexpected。
+# 用 sh（dash）运行会报 Syntax error: "(" unexpected。
 #
 # 原理：
 #   宿主是 Debian 12，无法安装 Ubuntu 包，也不能启动 Ubuntu 内核。
@@ -13,21 +14,34 @@
 #   再把 assets/identity/ 里的资产按注入钩子同样的逻辑应用上去，
 #   最后对应用后的文件系统做 grep 校验。
 #
-# 输入：
-#   /root/furryos/.verify/x/base     <- base-files 解包（/etc/os-release 等上游原值）
-#   /root/furryos/.verify/x/ssh      <- openssh-server 解包（sshd_config.d、pam.d/sshd）
-#   /root/furryos/.verify/x/motd     <- motd-news-config 解包（/etc/default/motd-news）
-#   /root/furryos/assets/identity/   <- 本层资产
+# 输入（由 tools/fetch-refs.sh 生成；参考数据不入库，脚本入库）：
+#   <repo>/.verify/x/base     <- base-files 解包（/etc/os-release 等上游原值）
+#   <repo>/.verify/x/ssh      <- openssh-server 解包（sshd_config.d、pam.d/sshd）
+#   <repo>/.verify/x/motd     <- motd-news-config 解包（/etc/default/motd-news）
+#   <repo>/assets/identity/   <- 本层资产
 #
-# 输出：PASS/FAIL 汇总；任何 FAIL 以退出码 1 结束。
+#   基线缺失时会自动调用 tools/fetch-refs.sh（可用 --no-fetch 关闭）。
+#   脚本路径全部相对自身定位，因此在任意 clone 目录、任意 CWD 下都成立。
+#
+# 输出：PASS/FAIL 汇总；任何 FAIL 以退出码 1 结束，缺参考基线以退出码 2 结束。
 
 set -u
 
-WS=/root/furryos
+SELF_DIR="$(cd "$(dirname "$0")" && pwd)"
+WS="$(cd "${SELF_DIR}/.." && pwd)"
 VERIFY="${WS}/.verify"
 SIM="${VERIFY}/sim"
 SRC="${WS}/assets/identity"
 BRAND="${WS}/assets/brand"
+
+AUTO_FETCH=1
+for _arg in "$@"; do
+	case "${_arg}" in
+	--no-fetch) AUTO_FETCH=0 ;;
+	-h|--help) sed -n '2,32p' "$0"; exit 0 ;;
+	*) echo "unknown option: ${_arg}" >&2; exit 2 ;;
+	esac
+done
 
 PASS=0
 FAIL=0
@@ -35,19 +49,39 @@ FAIL=0
 ok()   { PASS=$((PASS+1)); printf '  [PASS] %s\n' "$1"; }
 bad()  { FAIL=$((FAIL+1)); printf '  [FAIL] %s\n' "$1"; }
 
+# --------------------------------------------------- 0. 参考基线是否就绪
+echo "== 0. 检查上游参考基线 =="
+
+refs_ready () {
+	[ -e "${VERIFY}/x/base/usr/lib/os-release" ] \
+		&& [ -d "${VERIFY}/x/base/etc/update-motd.d" ] \
+		&& [ -e "${VERIFY}/x/ssh/usr/share/openssh/sshd_config" ] \
+		&& [ -e "${VERIFY}/x/motd/etc/default/motd-news" ]
+}
+
+if ! refs_ready && [ "${AUTO_FETCH}" -eq 1 ]; then
+	echo "  参考基线缺失，调用 tools/fetch-refs.sh 拉取（--no-fetch 可关闭）"
+	sh "${SELF_DIR}/fetch-refs.sh" || {
+		echo "  ERROR: tools/fetch-refs.sh 失败（无网络？可用 --no-fetch 并手动准备基线）" >&2
+		exit 2
+	}
+fi
+
+if ! refs_ready; then
+	echo "缺少上游参考包解包目录：${VERIFY}/x/{base,ssh,motd}" >&2
+	echo "请先运行：sh tools/fetch-refs.sh" >&2
+	exit 2
+fi
+echo "  参考基线就绪：${VERIFY}/x/{base,ssh,motd}"
+
 # ---------------------------------------------------------------- 1. 搭建快照
+echo
 echo "== 1. 用上游包原始文件搭建模拟文件系统 =="
 rm -rf "${SIM}"
 mkdir -p "${SIM}/etc/ssh/sshd_config.d" "${SIM}/etc/update-motd.d" \
          "${SIM}/etc/default" "${SIM}/etc/xdg" \
          "${SIM}/usr/share/about-distro" "${SIM}/usr/lib" \
          "${SIM}/var/cache" "${SIM}/etc/systemd/system"
-
-if [ ! -d "${VERIFY}/x/base" ] || [ ! -d "${VERIFY}/x/ssh" ]; then
-	echo "缺少上游参考包解包目录：${VERIFY}/x/{base,ssh}" >&2
-	echo "请先运行 .verify/fetch-refs.sh" >&2
-	exit 2
-fi
 
 # base-files 的上游原值（这是「注入前」的真实状态）
 # 注意：base-files 里 /etc/os-release 是指向 ../usr/lib/os-release 的符号链接，
@@ -95,9 +129,15 @@ install_into "${SRC}/motd-news"  "${SIM}/etc/default/motd-news" 0644
 install_into "${SRC}/sshd_banner.conf" "${SIM}/etc/ssh/sshd_config.d/010-furryos-banner.conf" 0644
 install_into "${SRC}/about-distro/kcm-about-distrorc" "${SIM}/etc/xdg/kcm-about-distrorc" 0644
 install_into "${SRC}/about-distro/furryos-logo.svg" "${SIM}/usr/share/about-distro/furryos-logo.svg" 0644
-# 6010 把 assets/identity/furryos-logo.svg 装成 /usr/share/about-distro/logo.svg
-install_into "${SRC}/furryos-logo.svg" "${SIM}/usr/share/about-distro/logo.svg" 0644
-[ -r "${BRAND}/paw.png" ] && install_into "${BRAND}/paw.png" "${SIM}/usr/share/about-distro/furryos-logo.png" 0644
+# 6010 把 assets/identity/furryos-logo.svg 装成 /usr/share/about-distro/logo.svg，
+# 缺 svg 时退回 brand/paw.svg。这里严格照抄 6010 的分支顺序：
+# 早期版本额外装了一个 6010 根本不会产生的 furryos-logo.png，使 LOGO= 解析
+# 断言可以在「真实产物不存在该文件」的情况下通过（假 PASS）。
+if [ -r "${SRC}/furryos-logo.svg" ]; then
+	install_into "${SRC}/furryos-logo.svg" "${SIM}/usr/share/about-distro/logo.svg" 0644
+elif [ -r "${BRAND}/paw.svg" ]; then
+	install_into "${BRAND}/paw.svg" "${SIM}/usr/share/about-distro/logo.svg" 0644
+fi
 
 # update-motd.d：删除上游脚本，装 FurryOS 脚本
 rm -f "${SIM}/etc/update-motd.d/00-header" \
@@ -159,6 +199,9 @@ else
 fi
 # 6010 的结构：/etc/os-release 是指向 ../usr/lib/os-release 的符号链接，
 # 两份内容必须一致，否则 KOSRelease 回退路径会读到上游值。
+# 6010 的契约是「真实文件写在 /usr/lib/os-release，/etc/os-release 保持符号链接」，
+# 这样 dpkg 归属与升级行为正常。所以这里断言的就是符号链接形态本身：
+# 早期版本在 else 分支也调用 ok，等于这条检查永远不可能失败。
 if [ -L "${SIM}/etc/os-release" ]; then
 	ok '/etc/os-release 是指向 ../usr/lib/os-release 的符号链接（保留 dpkg 归属）'
 	[ "$(readlink "${SIM}/etc/os-release")" = "../usr/lib/os-release" ] \
@@ -168,7 +211,16 @@ if [ -L "${SIM}/etc/os-release" ]; then
 		&& ok '/etc/os-release 与 /usr/lib/os-release 内容一致（回退路径不会暴露上游）' \
 		|| bad '/etc/os-release 与 /usr/lib/os-release 内容不一致'
 else
-	ok '/etc/os-release 是真实文件（未保留符号链接，dpkg -S 将失效，可接受）'
+	bad "/etc/os-release 不是符号链接（6010 应重建 -> ../usr/lib/os-release，否则 dpkg -S 失效）"
+fi
+# 上面的形态检查是对「模拟」的断言；再断言一次真实钩子确实做了同样的事，
+# 避免模拟与 6010 实现漂移后校验继续自证。
+if grep -q 'ln -sf ../usr/lib/os-release /etc/os-release' \
+	"${WS}/build/config/hooks/normal/6010-integrate-identity-assets.chroot" 2>/dev/null
+then
+	:
+else
+	bad "6010 未重建 /etc/os-release 符号链接（校验模拟已与真实钩子漂移）"
 fi
 
 # --- C. issue / motd ---
@@ -198,7 +250,7 @@ fi
 grep -qE '^Banner[[:space:]]+/etc/issue\.net$' "${SIM}/etc/ssh/sshd_config.d/010-furryos-banner.conf" \
 	&& ok "sshd drop-in 显式设置 Banner /etc/issue.net" \
 	|| bad "sshd drop-in 未显式设置 Banner"
-grep -q "sshd_config.d/\*.conf" /root/furryos/.verify/x/ssh/usr/share/openssh/sshd_config \
+grep -q "sshd_config.d/\*.conf" "${VERIFY}/x/ssh/usr/share/openssh/sshd_config" \
 	&& ok "openssh-server 模板含 Include /etc/ssh/sshd_config.d/*.conf（drop-in 会被加载）" \
 	|| bad "openssh-server 模板不含 Include，drop-in 不会生效"
 
@@ -209,16 +261,18 @@ else
 	ok "50-motd-news 已移除"
 fi
 # 只看会被执行/打印的非注释行：注释是维护说明，不会显示给用户。
-if grep -vE '^[[:space:]]*#' "${SIM}/etc/update-motd.d/00-header" 2>/dev/null | grep -qi "ubuntu"; then
-	bad "00-header 可执行内容仍含 Ubuntu"
-else
-	ok "00-header 已替换为 FurryOS 版且可执行内容不含 Ubuntu"
-fi
-if grep -vE '^[[:space:]]*#' "${SIM}/etc/update-motd.d/10-help-text" 2>/dev/null | grep -qi "ubuntu\|landscape"; then
-	bad "10-help-text 可执行内容仍含 Ubuntu/landscape"
-else
-	ok "10-help-text 已替换为 FurryOS 入口"
-fi
+# 先断言文件存在：早期版本把「文件不存在」也判为 PASS（两条 grep 都失败
+# 时 if 为假），于是删掉 assets/identity/update-motd.d/00-header 后校验仍然全绿。
+for _motd in 00-header 10-help-text; do
+	_motd_path="${SIM}/etc/update-motd.d/${_motd}"
+	if [ ! -f "${_motd_path}" ]; then
+		bad "${_motd} 缺失（6010 应安装 FurryOS 版；系统会退回 Ubuntu 默认 MOTD）"
+	elif grep -vE '^[[:space:]]*#' "${_motd_path}" 2>/dev/null | grep -qi "ubuntu\|landscape"; then
+		bad "${_motd} 可执行内容仍含 Ubuntu/landscape"
+	else
+		ok "${_motd} 已替换为 FurryOS 版且可执行内容不含 Ubuntu"
+	fi
+done
 # 动态 MOTD 输出模拟：跑一遍 FurryOS 版 00-header
 _OUT=$(cd "${SIM}" && sh ./etc/update-motd.d/00-header 2>/dev/null | head -1)
 echo "${_OUT}" | grep -q "FurryOS" \
@@ -335,6 +389,13 @@ else
 fi
 
 # ---------------------------------------------------------------- 汇总
+# 断言总数必须与 README/BUILD.md 承诺的一致：某个条件分支不再执行（文件消失、
+# 循环体跳过）时 PASS 会悄悄变小而退出码仍是 0，这一条把它变成 FAIL。
+EXPECTED_PASS=33
+if [ "${PASS}" -ne "${EXPECTED_PASS}" ]; then
+	bad "断言数 ${PASS} != ${EXPECTED_PASS}（有检查被跳过或新增；确认后同步更新 README/BUILD.md 与本行）"
+fi
+
 echo
 echo "=========================================="
 printf '结果：PASS=%d FAIL=%d\n' "${PASS}" "${FAIL}"

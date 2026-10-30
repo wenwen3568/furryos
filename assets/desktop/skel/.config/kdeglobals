@@ -1,7 +1,7 @@
 # FurryOS per-user KDE defaults (/etc/skel/.config/kdeglobals).
 #
 # OWNERSHIP (docs/CONTRACTS.md conflict table):
-#   desktop-visual   -> colour scheme, accent, widget style, icons, wallpaper
+#   desktop-visual   -> colour scheme, accent, widget style, icons, fonts, wallpaper
 #   motion-effects   -> [Effects] + [Effect-mouseclick] (click effect)
 # Merged into this single file by desktop-visual, who is the sole owner.
 #
@@ -10,11 +10,21 @@
 # the FurryOS look before any setting is touched.
 #
 # The values mirror look-and-feel/.../contents/defaults so that the global
-# theme and the per-user defaults can never disagree.
+# theme and the per-user defaults can never disagree. Both files are asserted
+# by assets/desktop/.tools/verify-consistency.py and tools/verify-visual.sh.
 
 [General]
 ColorScheme=FurryOS
 AccentColor=26,111,212
+# Fonts are pinned instead of inherited: with no [General] font key the session
+# font comes from whatever KDE Frameworks was compiled with, so a package
+# update could silently change the whole desktop's typography.
+#   Noto Sans -> fonts-noto-core (pulled in by plasma-desktop)
+#   Hack      -> fonts-hack (monospace)
+font=Noto Sans,10,-1,5,50,0,0,0,0,0
+fixed=Hack,10,-1,5,50,0,0,0,0,0
+menuFont=Noto Sans,10,-1,5,50,0,0,0,0,0
+toolBarFont=Noto Sans,10,-1,5,50,0,0,0,0,0
 
 [Colors:View]
 BackgroundAlternate=234,242,255
@@ -24,11 +34,22 @@ BackgroundNormal=255,255,255
 BackgroundAlternate=214,230,247
 BackgroundNormal=234,242,255
 
+# FurryOS icon theme (assets/desktop/icons/FurryOS, Inherits=breeze).
+# Naming `breeze` here would leave the desktop half-branded: the global theme
+# is FurryOS but System Settings -> Icons would still read "Breeze".
 [Icons]
-Theme=breeze
+Theme=FurryOS
 
 [KDE]
-widgetStyle=breeze
+# Select the FurryOS global theme for the live user and newly created accounts.
+# Without this key Plasma 5.27 falls back to org.kde.breeze.desktop and its
+# Next wallpaper, even when the colour scheme and plasmarc already say FurryOS.
+LookAndFeelPackage=com.furryos.lookandfeel
+widgetStyle=Breeze
+# Global animation speed multiplier (1.0 = normal). Key verified in
+# libkwin.so.5.27.11; keeps the 140/200/320ms brand motion budget at design
+# speed instead of whatever a user's session had cached.
+AnimationDurationFactor=1
 
 [MainToolbarIcons]
 Size=16

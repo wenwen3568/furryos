@@ -62,7 +62,12 @@ MISSING=0
 for LAYER in identity desktop sddm effects brand; do
 	if [ -d "${SOURCE}/${LAYER}" ]
 	then
-		cp -a "${SOURCE}/${LAYER}" "${STAGING}/${LAYER}"
+		# Idempotent: `lb chroot_hooks` can be re-run after a failed hook, and
+		# `cp -a src dst` would then create dst/src/ (nested layer) instead of
+		# refreshing it. Copy the CONTENTS into a fresh directory instead.
+		rm -rf "${STAGING:?}/${LAYER}"
+		install -d -m 0755 "${STAGING}/${LAYER}"
+		cp -a "${SOURCE}/${LAYER}/." "${STAGING}/${LAYER}/"
 		furryos_log "staged layer: ${LAYER}"
 	else
 		furryos_warn "asset layer missing: ${LAYER}"
@@ -71,11 +76,13 @@ for LAYER in identity desktop sddm effects brand; do
 done
 
 # Assert that the staging directory really is populated, so a silent partial
-# sync cannot ship an unbranded image.
+# sync cannot ship an unbranded image. Only count layers that the loop above
+# did NOT already report as missing - otherwise a fully absent asset tree is
+# reported as "10 layers missing" and misleads whoever reads the log.
 for LAYER in identity desktop sddm effects brand; do
-	if [ ! -d "${STAGING}/${LAYER}" ]
+	if [ -d "${SOURCE}/${LAYER}" ] && [ ! -d "${STAGING}/${LAYER}" ]
 	then
-		echo "${FURRYOS_LOG_TAG} ERROR: layer ${LAYER} is absent after staging" >&2
+		echo "${FURRYOS_LOG_TAG} ERROR: layer ${LAYER} was staged but is absent afterwards" >&2
 		MISSING=$(( MISSING + 1 ))
 	fi
 done

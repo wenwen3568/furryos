@@ -43,11 +43,32 @@ live-build 的 `includes.chroot_after_packages` 阶段把本目录复制为
 - `[Wallpaper] Image=FurryOS` → 指向 `/usr/share/wallpapers/FurryOS/` 壁纸包
 - `[Effects] Click=true` → 启用鼠标点击涟漪特效（Plasma 侧镜像；KWin 原生开关在
   `~/.config/kwinrc` 的 `[Plugins] mouseclickEnabled=true`）
-- `[KDE] widgetStyle=breeze` → 控件样式用系统自带 Breeze
+- `[Icons] Theme=FurryOS` → 图标主题指向 `/usr/share/icons/FurryOS`
+  （`Inherits=breeze,hicolor`，自身不含图标文件，因此只做品牌层不减少覆盖）
+- `[KDE] widgetStyle=Breeze` → 控件样式用系统自带 Breeze
+  （KDE 的控件样式名首字母大写，`breeze` 会回落默认值）
+- `[General] font=Noto Sans,10,…` / `fixed=Hack,10,…` → 钉死正文字体与等宽字体
+  （两者都随镜像安装；不写则由 KDE Frameworks 的编译期默认值决定，可能出现
+  与其他界面不一致的字体）
+- `[Plugins] glideEnabled=true`（在 `kwinrc`）→ 开启窗口打开/关闭动画。
+  KWin 5.27 的 `glide` 效果 `EnabledByDefault=false`，不写这一行窗口会「硬弹出」
 
 ## 与全局主题的一致性
 
 `assets/desktop/look-and-feel/com.furryos.lookandfeel/contents/defaults` 写的是
-同一组值（ColorScheme=FurryOS、widgetStyle=breeze、Theme=breeze、
-Image=FurryOS）。两条路径（全局主题 + /etc/skel）指向相同结果，因此无论
-用户在「首次登录」还是之后手动切换全局主题，外观都不会分裂。
+同一组值（ColorScheme=FurryOS、widgetStyle=Breeze、`[Icons] Theme=FurryOS`、
+`[plasmarc][Theme] name=furryos`、Image=FurryOS、font/fixed、KSplash）。
+两条路径（全局主题 + /etc/skel）指向相同结果，因此无论用户在「首次登录」还是
+之后手动切换全局主题，外观都不会分裂。
+
+> t5 修正：这里原来是 `[plasmarc][Theme] name=breeze`。Plasma 5.27 **没有**
+> 名为 `breeze` 的桌面主题（`plasma-apply-desktoptheme breeze` 会报
+> "Could not find theme"，合法值是 air/default/breeze-dark/breeze-light/furryos/
+> oxygen），于是面板静默回落到 Breeze，而窗口已经是 FurryOS —— 正是「一半
+> FurryOS 一半 Breeze」的来源。现改为 `name=furryos`，并由
+> `tools/verify-visual.sh` 在沙箱里真跑 `plasma-apply-lookandfeel` 复核 KDE
+> 自己写出的 `kdedefaults/plasmarc`。
+
+> 另注：`glide` 不能写在全局主题里 —— 实测 `plasma-apply-lookandfeel` 只应用
+> `[kwinrc][org.kde.kdecoration2]`，`[kwinrc][Plugins]` 会被丢弃，所以它只在
+> `/etc/skel/.config/kwinrc` 里设置。

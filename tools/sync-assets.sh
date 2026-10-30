@@ -56,6 +56,14 @@ for LAYER in identity desktop sddm effects brand; do
 	rm -rf "${DST}/${LAYER}"
 	install -d -m 0755 "${DST}"
 	cp -a "${SRC}/${LAYER}" "${DST}/${LAYER}"
+	# Git only preserves the executable bit. A builder using `umask 077` can
+	# therefore have 0600 source files even for a normal 0644 Git blob. The
+	# hooks copy with cp -a, so without normalisation those modes reach the ISO
+	# and the unprivileged live user cannot read QML/theme assets (ksplashqml
+	# then crashes when setStage() dereferences its null rootObject).
+	# a+rX makes every file readable and every directory traversable; capital X
+	# preserves, rather than removes, the executable bit on scripts.
+	chmod -R a+rX,go-w "${DST}/${LAYER}"
 	echo "[sync-assets] COPIED   assets/${LAYER} -> ${DST}/${LAYER} (${COUNT} files)"
 done
 

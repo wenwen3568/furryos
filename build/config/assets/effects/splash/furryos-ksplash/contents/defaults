@@ -1,14 +1,30 @@
+# FurryOS KSplash look-and-feel defaults (org.furryos.desktop).
+#
+# This package exists to provide the login -> desktop splash scene
+# (contents/splash/Splash.qml); ksplashqml selects it through ksplashrc
+# [KSplash] Theme=org.furryos.desktop (written by effects-splash-install.sh).
+#
+# It also shows up in System Settings -> Global Theme, because Plasma lists
+# every Plasma/LookAndFeel package there. t5 therefore points every key at the
+# FurryOS scheme as well: selecting this entry can no longer produce a
+# "FurryOS splash on a Breeze desktop" mix. Before this change it carried
+# `name=default` and `Image=Next` — pure Breeze leftovers.
+#
+# The display name is "FurryOS 启动画面" (see metadata.json) so the two FurryOS
+# entries in the global-theme list (com.furryos.lookandfeel = the full desktop
+# theme, org.furryos.desktop = the splash) are distinguishable.
+
 [kdeglobals][General]
 ColorScheme=FurryOS
 
 [kdeglobals][Icons]
-Theme=breeze
+Theme=FurryOS
 
 [plasmarc][Theme]
-name=default
+name=furryos
 
 [Wallpaper]
-Image=Next
+Image=FurryOS
 
 [KSplash]
 Theme=org.furryos.desktop

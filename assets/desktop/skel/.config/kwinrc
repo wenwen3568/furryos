@@ -33,6 +33,15 @@
 
 [Plugins]
 mouseclickEnabled=true
+# Window open/close animation.
+# KWin 5.27 ships `glide` with EnabledByDefault=false
+# (/usr/share/kwin/builtin-effects/kwin4_effect_glide/metadata.json), so a stock
+# install has NO open/close animation: windows pop in and out instantly, which
+# reads as "abrupt" next to the 140/200ms brand motion. glide is KWin's own
+# effect (kwin-data, in the image) — nothing extra to install.
+# `slide` / `slidingpopups` keep their upstream defaults (already enabled);
+# `magiclamp` (minimise) also ships disabled and is deliberately left alone.
+glideEnabled=true
 
 [Effect-mouseclick]
 Color1=26,111,212

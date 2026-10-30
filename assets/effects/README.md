@@ -4,57 +4,99 @@ FurryOS Effects Layer
 ## 产出位置
 
 - assets/effects/click-effect/ - 点击特效脚本与配置
-- assets/effects/splash/ - 启动画面（ksplash/penguin）相关资产
+- assets/effects/splash/ - 启动画面（KDE ksplash 主题 org.furryos.desktop）相关资产
 
 ## 两个组件的详细说明
 
 ### 1. 点击特效
 
-**脚本**: effects-install.sh / effects-verify.sh / community-click-effect.sh
+**脚本**: `effects-install.sh` / `effects-verify.sh` / `community-click-effect.sh`
 
-**KWin 配置**: 将以下片段合并进 `/etc/skel/.config/kwinrc`（由 desktop-visual 负责）：
+**配置落点**（`assets/desktop/skel/.config/` 里的两个文件，构建时进 `/etc/skel/.config/`）：
 
-```
+`kdeglobals` —— 特效开关与外观：
+
+```ini
 [Effects]
 Click=true
 
 [Effect-mouseclick]
-七项配置：
-  Color1=#1A6FD4
-  Color2=#2C85EC
-  Color3=#0F4C8C
-  LineWidth=3
-  RingCount=2
-  RingLife=250
-  RingSize=320
-  ShowText=false
+Color1=26,111,212      # furryos-blue
+Color2=15,76,140       # furryos-blue-dark
+Color3=10,53,104       # furryos-blue-deep
+LineWidth=3
+RingCount=2
+RingLife=250
+RingSize=32            # 半径，像素（KWin 配置界面里的 "Ring Radius"）
+ShowText=false
+```
 
-**注意**: KWin 5.27.12 的二进制反查显示，特效开关主要走 kwinrc 的 [Plugins] mouseclickEnabled=true，而非 kdeglobals 的 [Effects] 组。因此必须同时写入 kwinrc 的 [Plugins] 与 [Effect-mouseclick] 两段配色键，两者的 8 个色值必须完全一致。
+`kwinrc` —— 插件开关（KWin 5.27 真正读的地方）：
+
+```ini
+[Plugins]
+mouseclickEnabled=true
+
+[Effect-mouseclick]
+（与上面完全相同的 8 个键）
+```
+
+**注意**：KWin 5.27 的点击特效由插件开关 `kwinrc [Plugins] mouseclickEnabled` 控制，
+外观走 `Effect-%1` 组模板（→ `[Effect-mouseclick]`）；`kdeglobals` 的 `[Effects]` 组
+只是兼容写法。两处必须同时写、且 8 个键值逐个相等——`verify-consistency.py` 会直接
+比对两段，不一致就失败。
 
 ### 2. 启动画面
 
-**资产**: furryos-splash.svg（爪印+蓝白配色）、furryos-splash-preview.png、furryos-ksplash/ 与 furryos-plymouth/ 目录
+**资产**：`furryos-splash.svg`（设计源，爪印 + 蓝白配色）、`furryos-splash-preview.png`
+（`render-preview.sh` 渲染的预览图，供 `verify-splash-pixels.py` 做像素校验）、
+`furryos-ksplash/`（KDE ksplash 主题 `org.furryos.desktop`）、`furryos-plymouth/`
+（Plymouth 主题文件；**本镜像的包列表里没有 `plymouth`**，见下）。
 
-**安装步骤**：
+**安装步骤**（构建期由 `6130-integrate-effects-assets.chroot` 调用）：
 
-1. `effects-splash-install.sh` 会将 furryos-splash.svg 安装至 chroot 的 /usr/share/splash/ 并注入 ksplash 配置
-2. 如需 Plymouth 主题，请手动执行：`effects-splash-install.sh --plymouth`（将复制 furryos-plymouth 文件并更新 initramfs）
-3. 验证：重启后检查启动画面是否显示 FurryOS 品牌蓝白爪印
+1. `effects-splash-install.sh` 把 `furryos-ksplash/` 装到
+   `/usr/share/plasma/look-and-feel/org.furryos.desktop/`，并写 `/etc/xdg/ksplashrc`：
+
+   ```ini
+   [KSplash]
+   Theme=org.furryos.desktop
+   ```
+
+   只装 look-and-feel 目录是不够的：`ksplashqml` 读的是 `ksplashrc` 的 `[KSplash] Theme`，
+   缺这一行就仍然显示 Plasma 全局主题的启动画面。
+
+2. 同一脚本把 `furryos-plymouth/` 装到 `/usr/share/plymouth/themes/furryos/`。但**本镜像
+   没有装 `plymouth` 包**，这些文件只是就位、不会生效；开机画面实际由 ksplash 承担。
+   要在真机上启用 Plymouth：`apt-get install -y plymouth plymouth-themes`，
+   再 `plymouth-set-default-theme furryos`，最后 `update-initramfs -u`
+   （脚本的 `--initramfs` 会做最后一步）。
+
+   脚本选项：`--prefix DIR`（装到别的前缀，构建期/测试用）、`--initramfs`（额外重建
+   initramfs）、`-h`。**没有** `--plymouth` 选项——Plymouth 文件在目录存在时总会被安装。
+
+3. 验证：重启后看启动画面是否为蓝白渐变 + 爪印。
 
 ## 验收（在生成环境中可观察到效果）
 
 ### 点击特效
 
-- 鼠标单击桌面出现 blue-white-red 彩带扩散动画
-- 动画时长：点击 140ms → 滞留 200ms → 抖动 320ms（契约区间）
-- 颜色一致性：kdeglobals [Effects] 组与 kwinrc [Effect-mouseclick] 八色值完全一致（#1A6FD4/#2C85EC/#0F4C8C 等）
+- 鼠标单击桌面出现蓝白圆环（涟漪）扩散动画：`RingCount=2`、`RingLife=250`、`RingSize=320`、`LineWidth=3`
+- 圆环生命周期 250ms（brand-tokens.md 第 4 节「点击反馈 200–300ms」区间内）；
+  悬停 140ms / 按下 200ms / 密码错误抖动 320ms 属于 SDDM 登录主题，见 `assets/sddm/README.md`
+- 颜色一致性：kdeglobals `[Effects]` 与 kwinrc `[Effect-mouseclick]` 两组键值逐个相等（`Color1=26,111,212` 等，校验见 `assets/desktop/.tools/verify-consistency.py`）
 - 若未观察到动画：确认 `/etc/skel/.config/kwinrc` 已安装并重新登录
 
 ### 启动画面
 
 - 开机时显示蓝白渐变背景 + 爪印装饰
 - 卷标与 ISO 内容已标记为 FurryOS
-- 若未显示：确认 `/usr/share/splash/furryos-splash.svg` 存在且 ksplash 配置已加载
+- 若未显示，逐条确认：
+  ```sh
+  grep -A1 '^\[KSplash\]' /etc/xdg/ksplashrc        # → Theme=org.furryos.desktop
+  ls /usr/share/plasma/look-and-feel/org.furryos.desktop/contents/splash/Splash.qml
+  ls /usr/share/plasma/look-and-feel/org.furryos.desktop/metadata.json
+  ```
 
 ## 降级方案（社区特效安装步骤 + 用户手动操作说明）
 
@@ -65,11 +107,11 @@ Click=true
      ```
      [Plugins]
      mouseclickEnabled=true
-     
+
      [Effect-mouseclick]
-     Color1=#1A6FD4
-     Color2=#2C85EC
-     Color3=#0F4C8C
+     Color1=26,111,212
+     Color2=44,133,236
+     Color3=15,76,140
      LineWidth=3
      RingCount=2
      RingLife=250
@@ -79,11 +121,13 @@ Click=true
    - 用户需要手动重启 KWin 或重新登录才能生效
 
 2. **启动画面**：
-   - 步骤：若 ksplash 默认主题未切换，手动执行：
+   - 步骤：若启动画面仍是 Plasma 默认，手动执行：
+     ```sh
+     PREFIX=/ sh assets/effects/splash/effects-splash-install.sh
      ```
-     effects-splash-install.sh
-     ```
-   - 这会安装 furryos-splash.svg 并更新 ksplash 配置，必要时需重启 X 会话
+   - 它会把 ksplash 主题装到 `/usr/share/plasma/look-and-feel/org.furryos.desktop/`
+     并写 `/etc/xdg/ksplashrc`（`[KSplash] Theme=org.furryos.desktop`）；
+     改完需要重启 X 会话（或重启）才生效
 
 ## 备注
 

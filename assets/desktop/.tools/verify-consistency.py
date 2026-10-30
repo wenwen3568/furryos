@@ -9,8 +9,18 @@ actual files a session would read:
   2. /etc/skel/.config/kdeglobals             (installed from skel/.config/kdeglobals)
   3. look-and-feel/.../contents/defaults      (the global theme's own defaults)
 
-For each it extracts ColorScheme, AccentColor, widgetStyle, icons theme and
-wallpaper image, then asserts all three report the same values.
+For each it extracts ColorScheme, AccentColor, widgetStyle, icon theme,
+fonts, plasma theme name and wallpaper image, then asserts all three report
+the same values.
+
+t5 additions (the "half FurryOS, half Breeze" gate):
+  * plasma theme name must be `furryos` in BOTH skel plasmarc and the global
+    theme defaults, and that theme package must exist. The old value `breeze`
+    is not a Plasma 5.27 desktop theme at all (proved with
+    `plasma-apply-desktoptheme breeze`), so the panel silently stayed Breeze.
+  * icon theme, font, fixed font, KSplash theme, glide animation switch and
+    the animation speed factor are all asserted, in every entry point.
+  * the ksplash look-and-feel package may not fall back to Breeze values.
 
 Also re-computes the WCAG contrast ratios brand-tokens.md claims, so the
 readability guarantee is verified rather than asserted.
@@ -22,6 +32,7 @@ import re
 import sys
 
 DESKTOP = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+REPO = os.path.dirname(os.path.dirname(DESKTOP))
 
 FILES = {
     "FurryOS.colors": os.path.join(DESKTOP, "FurryOS.colors"),
@@ -29,27 +40,44 @@ FILES = {
     "look-and-feel defaults": os.path.join(
         DESKTOP, "look-and-feel", "com.furryos.lookandfeel", "contents", "defaults"),
     "skel plasmarc": os.path.join(DESKTOP, "skel", ".config", "plasmarc"),
+    "skel kwinrc": os.path.join(DESKTOP, "skel", ".config", "kwinrc"),
     "plasma-theme plasmarc": os.path.join(DESKTOP, "plasma-theme", "furryos", "plasmarc"),
     "skel appletsrc": os.path.join(
         DESKTOP, "skel", ".config", "plasma-org.kde.plasma.desktop-appletsrc"),
+    "ksplash defaults": os.path.join(
+        REPO, "assets", "effects", "splash", "furryos-ksplash", "contents", "defaults"),
 }
 
-# what each entry point must say
+# What each entry point must say. This table IS the expectation: every
+# assertion below reads it, so changing a value here changes the verdict
+# (an earlier version printed EXPECT but asserted hard-coded literals, which
+# made the table look authoritative while being inert).
 EXPECT = {
     "ColorScheme": "FurryOS",
     "AccentColor": "26,111,212",
-    "widgetStyle": "breeze",
-    "Theme": "breeze",
+    "widgetStyle": "Breeze",
+    "IconsTheme": "FurryOS",
     "Image": "FurryOS",
-    "name": "breeze",
+    "PlasmaTheme": "furryos",
     "defaultWallpaperTheme": "FurryOS",
+    "KSplashTheme": "org.furryos.desktop",
+    "font": "Noto Sans,10,-1,5,50,0,0,0,0,0",
+    "fixed": "Hack,10,-1,5,50,0,0,0,0,0",
+    "glide": "true",
+    "AnimationDurationFactor": "1",
 }
 
 
 def read_kv(path):
-    """Flatten an INI-ish file into {(section, key): value}."""
+    """Flatten an INI-ish file into {(section, key): value}.
+
+    `section` keeps the full bracket content, so Plasma look-and-feel files
+    such as `[kdeglobals][Icons]` become the section string
+    "kdeglobals][Icons"; lookups filter with `endswith`, which makes the same
+    helper work for both plain and nested sections.
+    """
     out = {}
-    section = None
+    section = ""
     for raw in open(path):
         line = raw.strip()
         if not line or line.startswith("#"):
@@ -62,6 +90,17 @@ def read_kv(path):
             k, v = line.split("=", 1)
             out[(section, k.strip())] = v.strip()
     return out
+
+
+def val(kv, key, section=None):
+    """First value for `key`; when `section` is given the section must end with it."""
+    for (s, k), v in kv.items():
+        if k != key:
+            continue
+        if section is not None and not (s or "").endswith(section):
+            continue
+        return v
+    return None
 
 
 def luminance(rgb):
@@ -93,39 +132,65 @@ def main():
             continue
         kv = read_kv(path)
         loaded[label] = kv
-        hits = {k: v for (s, k), v in kv.items() if k in EXPECT}
+        hits = {}
+        for key in EXPECT:
+            v = val(kv, key)
+            if v is not None:
+                hits[key] = v
         print("  %-24s %s" % (label, hits))
 
-    def val(label, key):
-        for (s, k), v in loaded.get(label, {}).items():
-            if k == key:
-                return v
-        return None
+    def expect(label, key, section, expected):
+        got = val(loaded.get(label, {}), key, section)
+        if got != expected:
+            failures.append("%s [%s] %s=%r (expected %r)"
+                            % (label, section, key, got, expected))
 
-    # ColorScheme must be FurryOS wherever it appears
+    # colour scheme
     for label in ("FurryOS.colors", "skel kdeglobals", "look-and-feel defaults"):
-        got = val(label, "ColorScheme")
-        if got != "FurryOS":
-            failures.append("%s ColorScheme=%r (expected FurryOS)" % (label, got))
-    # AccentColor
+        expect(label, "ColorScheme", "General", EXPECT["ColorScheme"])
     for label in ("skel kdeglobals", "look-and-feel defaults"):
-        got = val(label, "AccentColor")
-        if got != "26,111,212":
-            failures.append("%s AccentColor=%r (expected 26,111,212)" % (label, got))
+        expect(label, "AccentColor", "General", EXPECT["AccentColor"])
+
     # widget style
-    if val("skel kdeglobals", "widgetStyle") != "breeze":
-        failures.append("skel kdeglobals widgetStyle != breeze")
-    if val("look-and-feel defaults", "widgetStyle") != "breeze":
-        failures.append("look-and-feel defaults widgetStyle != breeze")
+    for label in ("skel kdeglobals", "look-and-feel defaults"):
+        expect(label, "widgetStyle", "KDE", EXPECT["widgetStyle"])
+
+    # plasma desktop theme: must be named in both entry points (a global theme
+    # that stays silent about the panel theme leaves Breeze's in place), and the
+    # named package must exist in the asset tree.
+    # NOTE: plasma-theme/furryos/plasmarc is the theme's OWN config, so it
+    # correctly has no [Theme] name key; only the two consumer files do.
+    for label in ("skel plasmarc", "look-and-feel defaults"):
+        expect(label, "name", "Theme", EXPECT["PlasmaTheme"])
+    theme_dir = os.path.join(DESKTOP, "plasma-theme", EXPECT["PlasmaTheme"])
+    for rel in ("colors", "metadata.json", "plasmarc"):
+        if not os.path.exists(os.path.join(theme_dir, rel)):
+            failures.append("plasma theme %r is missing %s"
+                            % (EXPECT["PlasmaTheme"], rel))
+
+    # icon theme + the theme itself (Inherits=breeze keeps icon coverage)
+    for label in ("skel kdeglobals", "look-and-feel defaults", "ksplash defaults"):
+        expect(label, "Theme", "Icons", EXPECT["IconsTheme"])
+    icon_theme = os.path.join(DESKTOP, "icons", EXPECT["IconsTheme"], "index.theme")
+    if not os.path.exists(icon_theme):
+        failures.append("icon theme missing: %s" % icon_theme)
+    elif "Inherits=breeze" not in open(icon_theme).read():
+        failures.append("icon theme %s does not Inherit=breeze"
+                        % EXPECT["IconsTheme"])
+
+    # fonts: pinned in both entry points (otherwise the session font is whatever
+    # KDE Frameworks happened to be compiled with)
+    for label in ("skel kdeglobals", "look-and-feel defaults"):
+        for key in ("font", "fixed"):
+            expect(label, key, "General", EXPECT[key])
+
     # wallpaper
-    if val("skel kdeglobals", "Image") != "FurryOS":
-        failures.append("skel kdeglobals Wallpaper Image != FurryOS")
-    if val("look-and-feel defaults", "Image") != "FurryOS":
-        failures.append("look-and-feel defaults Wallpaper Image != FurryOS")
-    if val("plasma-theme plasmarc", "defaultWallpaperTheme") != "FurryOS":
-        failures.append("plasma-theme plasmarc defaultWallpaperTheme != FurryOS")
-    if val("skel plasmarc", "defaultWallpaperTheme") != "FurryOS":
-        failures.append("skel plasmarc defaultWallpaperTheme != FurryOS")
+    for label in ("skel kdeglobals", "look-and-feel defaults"):
+        expect(label, "Image", "Wallpaper", EXPECT["Image"])
+    for label in ("plasma-theme plasmarc", "skel plasmarc"):
+        expect(label, "defaultWallpaperTheme", "Wallpaper",
+               EXPECT["defaultWallpaperTheme"])
+
     # appletsrc must point at the installed wallpaper path
     ap = os.path.join(DESKTOP, "skel", ".config",
                       "plasma-org.kde.plasma.desktop-appletsrc")
@@ -140,6 +205,14 @@ def main():
                         "1920x1080.png")
     if not os.path.exists(wpkg):
         failures.append("wallpaper package image missing: %s" % wpkg)
+
+    # login -> desktop splash: both the global theme and the splash package
+    # must name the FurryOS splash, and the splash package must not carry Breeze
+    # leftovers (it used to say name=default / Image=Next).
+    expect("look-and-feel defaults", "Theme", "KSplash", EXPECT["KSplashTheme"])
+    expect("ksplash defaults", "Theme", "KSplash", EXPECT["KSplashTheme"])
+    expect("ksplash defaults", "name", "Theme", EXPECT["PlasmaTheme"])
+    expect("ksplash defaults", "Image", "Wallpaper", EXPECT["Image"])
 
     # click effect merged into kdeglobals (motion-effects' keys)
     kg = open(FILES["skel kdeglobals"]).read()
@@ -182,6 +255,17 @@ def main():
         print("  [Effect-mouseclick] identical in kdeglobals and kwinrc (%d keys)"
               % len(kg_sec))
 
+    # window open/close animation: `glide` ships EnabledByDefault=false in
+    # kwin-data 5.27 (metadata.json), so without this key windows pop in and out
+    # with no animation at all. It lives in skel kwinrc, which is the file the
+    # session reads; the global theme cannot carry it (plasma-apply-lookandfeel
+    # applies only [kwinrc][org.kde.kdecoration2] — verified empirically).
+    expect("skel kwinrc", "glideEnabled", "Plugins", EXPECT["glide"])
+    # global animation speed multiplier (libkwin reads kdeglobals [KDE])
+    for label in ("skel kdeglobals", "look-and-feel defaults"):
+        expect(label, "AnimationDurationFactor", "KDE",
+               EXPECT["AnimationDurationFactor"])
+
     print()
     print("=== 2. WCAG contrast ratios (brand-tokens.md claims) ===")
     # brand-tokens.md rounds its ratios, so allow a small rounding slack in
@@ -200,12 +284,30 @@ def main():
         if not ok:
             failures.append("contrast %s: claimed %s computed %.2f" % (name, claimed, got))
 
-    # and the pair the colour scheme actually ships
+    # and the pair the colour scheme actually ships - READ from FurryOS.colors,
+    # not hard-coded. An earlier version printed a fixed (18,40,63)/(255,255,255)
+    # pair that no assertion consumed, so it kept printing 14.99:1 even after
+    # [Colors:View] was broken.
     print()
-    print("  shipped pair: Colors:View fg on bg =")
-    view_fg = (18, 40, 63)
-    view_bg = (255, 255, 255)
-    print("    %s on %s -> %.2f:1" % (view_fg, view_bg, contrast(view_fg, view_bg)))
+    print("  shipped pair: Colors:View fg on bg (read from FurryOS.colors) =")
+    colors_kv = loaded.get("FurryOS.colors", {})
+    view_fg_s = colors_kv.get(("Colors:View", "ForegroundNormal"))
+    view_bg_s = colors_kv.get(("Colors:View", "BackgroundNormal"))
+    if not view_fg_s or not view_bg_s:
+        failures.append("FurryOS.colors [Colors:View] ForegroundNormal/"
+                        "BackgroundNormal missing")
+    else:
+        try:
+            view_fg = tuple(int(x) for x in view_fg_s.split(","))
+            view_bg = tuple(int(x) for x in view_bg_s.split(","))
+            got = contrast(view_fg, view_bg)
+            print("    %s on %s -> %.2f:1 (AAA needs 7.0)" % (view_fg, view_bg, got))
+            if got < 7.0:
+                failures.append("[Colors:View] fg/bg contrast %.2f:1 < 7.0 (AAA)"
+                                % got)
+        except ValueError:
+            failures.append("FurryOS.colors [Colors:View] values are not r,g,b:"
+                            " %r / %r" % (view_fg_s, view_bg_s))
 
     print()
     if failures:
@@ -214,7 +316,9 @@ def main():
             print("  - " + f)
         return 1
     print("PASS: colour scheme, /etc/skel defaults and the global theme all name"
-          " FurryOS; click-effect keys merged; contrast claims verified.")
+          " FurryOS (colour scheme, plasma theme, icon theme, fonts, wallpaper,"
+          " splash); click effect and glide animation keys merged; contrast"
+          " claims verified.")
     return 0
 
 

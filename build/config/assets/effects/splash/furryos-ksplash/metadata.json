@@ -6,15 +6,17 @@
             }
         ],
         "Category": "",
-        "Description": "FurryOS blue and white look and feel with paw mark",
+        "Description": "FurryOS 登录到桌面的启动画面（蓝白 + 爪印），与 SDDM 登录界面同一视觉语言",
         "Id": "org.furryos.desktop",
-        "License": "GPLv2+",
-        "Name": "FurryOS",
+        "License": "CC-BY-SA-4.0",
+        "Name": "FurryOS 启动画面",
         "ServiceTypes": [
             "Plasma/LookAndFeel"
         ],
         "Version": "2.0",
-        "Website": "https://furryos.example"
+        "Website": "https://furryos.example.org/",
+        "Name[zh_CN]": "FurryOS 启动画面",
+        "Description[zh_CN]": "FurryOS 登录到桌面的启动画面（蓝白 + 爪印），与 SDDM 登录界面同一视觉语言"
     },
     "Keywords": "Desktop;Workspace;Appearance;Look and Feel;Logout;Lock;Suspend;Shutdown;Hibernate;FurryOS;",
     "X-Plasma-APIVersion": "2",

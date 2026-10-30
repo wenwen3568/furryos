@@ -32,6 +32,9 @@ Image {
     source: "../assets/paw.svg"
     fillMode: Image.PreserveAspectFit
     smooth: true
-    sourceSize.width: Math.round(designSize)
-    sourceSize.height: Math.round(designSize)
+    /* 按实际像素尺寸光栅化 SVG，而不是按设计尺寸：
+       早先用 designSize 光栅化再被 scaleX/scaleY 放大，在 2560x1440 及以上
+       屏幕上爪印边缘会发虚（SVG 先缩到 340px 再拉到 800px）。 */
+    sourceSize.width: Math.max(1, Math.round(width))
+    sourceSize.height: Math.max(1, Math.round(height))
 }

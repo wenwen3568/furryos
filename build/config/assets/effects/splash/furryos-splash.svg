@@ -24,8 +24,8 @@
       <stop offset="100%" stop-color="#FFFFFF"/>
     </linearGradient>
     <linearGradient id="furryos-bar" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%"   stop-color="#FFFFFF" stop-opacity="0.55"/>
-      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="1"/>
+      <stop offset="0%"   stop-color="#0F4C8C" stop-opacity="0.85"/>
+      <stop offset="100%" stop-color="#1A6FD4" stop-opacity="1"/>
     </linearGradient>
   </defs>
 
@@ -59,19 +59,24 @@
     </g>
   </g>
 
-  <!-- 字标：FurryOS -->
+  <!-- 字标：FurryOS
+       颜色必须是深蓝而不是白：渐变在 y=700 处已是 (159,195,240) 的浅蓝，
+       白字只有 1.8:1（实测渲染值），深蓝 #0A3568 是 6.6:1。
+       t5 之前这里写的是 #FFFFFF。 -->
   <text x="960" y="700" text-anchor="middle"
         font-family="Noto Sans, DejaVu Sans, sans-serif"
         font-size="96" font-weight="700" letter-spacing="6"
-        fill="#FFFFFF">FurryOS</text>
+        fill="#0A3568">FurryOS</text>
 
-  <!-- 副标语 -->
+  <!-- 副标语：同理由 #EAF2FF 改为 #0F4C8C（5.2:1） -->
   <text x="960" y="762" text-anchor="middle"
         font-family="Noto Sans, DejaVu Sans, sans-serif"
         font-size="30" letter-spacing="4"
-        fill="#EAF2FF">蓝白之间，轻快回应</text>
+        fill="#0F4C8C">蓝白之间，轻快回应</text>
 
-  <!-- 底部进度条（Plymouth 会用脚本在其上绘制实际进度；此处为静态底轨） -->
-  <rect x="660" y="900" width="600" height="6" rx="3" fill="#FFFFFF" opacity="0.28"/>
+  <!-- 底部进度条（Plymouth 会用脚本在其上绘制实际进度；此处为静态底轨）
+       底轨与已完成段都用品牌蓝：白色在 y=900 处（背景 ≈ 239,245,255）
+       只有 1.1:1，等于看不见；#1A6FD4 在该位置是 4.5:1。 -->
+  <rect x="660" y="900" width="600" height="6" rx="3" fill="#1A6FD4" opacity="0.18"/>
   <rect x="660" y="900" width="240" height="6" rx="3" fill="url(#furryos-bar)"/>
 </svg>

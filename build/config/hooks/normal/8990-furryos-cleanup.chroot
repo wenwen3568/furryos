@@ -5,9 +5,11 @@
 # Removes build-time-only artefacts so they do not ship in the ISO:
 #   * /opt/furryos/assets - the staged asset copies (they have already been
 #     installed into their final locations by hooks 6010/6110/6120/6130)
-#   * /etc/sddm.conf.pre-furryos - backup taken while wiring Current=
-#   * /live-build - the read-only bind mount point left empty by
-#     lb chroot_hooks after it unmounts config
+#
+# The /live-build bind mount is NOT cleaned up here: lb chroot_hooks owns it and
+# umounts + rmdirs it after the hooks finish. An earlier version tried
+# `rm -rf /live-build` (a read-only bind mount - always fails, was swallowed by
+# `|| true`) and `rm -f /etc/sddm.conf.pre-furryos` (a backup nothing creates).
 #
 # It also refreshes desktop/icon caches so the newly installed themes,
 # wallpapers and colour schemes are picked up without the user having to log
@@ -26,12 +28,6 @@ then
 	furryos_log "removed /opt/furryos/assets"
 fi
 rmdir /opt/furryos 2>/dev/null || true
-
-# --- remove sddm backup ----------------------------------------------------
-rm -f /etc/sddm.conf.pre-furryos
-
-# --- remove leftover bind-mount directory ---------------------------------
-rm -rf /live-build 2>/dev/null || true
 
 # --- refresh caches --------------------------------------------------------
 # Icon cache for the newly installed wallpapers/colour schemes (gtk-update-icon

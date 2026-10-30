@@ -13,6 +13,11 @@ Two things are checked:
      positive / visited) are allowed to keep Breeze's values, because they
      encode error/warning/success/visited-link meaning rather than brand.
 
+  C. No off-palette literals in the SDDM theme — the theme's own contract is
+     "色值的唯一来源是 Theme.qml"; every #RRGGBB literal in assets/sddm must be
+     a brand token or a documented semantic colour. This is what catches a
+     component that hard-codes a colour instead of referencing Theme.*.
+
 Exit code 0 = valid.
 """
 import os
@@ -44,6 +49,7 @@ SEMANTIC_RGB = {
     (39, 174, 96),    # ForegroundPositive
     (155, 89, 182),   # ForegroundVisited
     (176, 55, 69),    # Selection ForegroundNegative
+    (179, 38, 30),    # #B3261E - furryos-negative (SDDM 登录失败提示, 见 brand-tokens.md 1.1)
     (198, 92, 0),     # Selection ForegroundNeutral
     (23, 104, 57),    # Selection ForegroundPositive
 }
@@ -156,6 +162,29 @@ def main():
     for sec, key, rgb, lineno in off_palette:
         failures.append("off-palette value %s in [%s] %s (line %d)" % (rgb, sec, key, lineno))
 
+    # --- C. no off-palette hex literals in the SDDM theme -------------------
+    sddm_root = os.path.join(os.path.dirname(DESKTOP), "sddm")
+    theme_tokens = BRAND_RGB | SEMANTIC_RGB
+    hex_re = re.compile(r"#[0-9A-Fa-f]{6}\b")
+    qml_scan = []
+    if os.path.isdir(sddm_root):
+        for dirpath, _dirnames, filenames in os.walk(sddm_root):
+            for name in sorted(filenames):
+                if not name.endswith((".qml", ".conf", ".desktop")):
+                    continue
+                fpath = os.path.join(dirpath, name)
+                for lineno, raw in enumerate(open(fpath, encoding="utf-8"), 1):
+                    if raw.lstrip().startswith(("#", "//")):
+                        continue
+                    for hit in hex_re.findall(raw):
+                        rgb = tuple(int(hit[i:i + 2], 16) for i in (1, 3, 5))
+                        rel = os.path.relpath(fpath, sddm_root)
+                        qml_scan.append((rel, lineno, hit, rgb in theme_tokens))
+    off_theme = [x for x in qml_scan if not x[3]]
+    for rel, lineno, hit, _ok in off_theme:
+        failures.append("off-palette literal %s in sddm/%s:%d"
+                        % (hit, rel, lineno))
+
     # --- report ------------------------------------------------------------
     print("FurryOS.colors: %d sections" % len(sets))
     for sec in sorted(sets):
@@ -170,6 +199,11 @@ def main():
           % len({rgb for sec, kv in sets.items() for k, (v, _) in kv.items()
                  if re.match(r"^\d+,\d+,\d+$", v)
                  and tuple(int(g) for g in v.split(",")) in SEMANTIC_RGB}))
+    print()
+    print("SDDM theme hex literals: %d (all on brand/semantic palette: %s)"
+          % (len(qml_scan), "yes" if not off_theme else "NO"))
+    for rel, lineno, hit, _ok in off_theme:
+        print("  off-palette: sddm/%s:%d %s" % (rel, lineno, hit))
     if off_palette:
         print()
         print("off-palette values:")

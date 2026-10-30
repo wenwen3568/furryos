@@ -38,35 +38,35 @@ set -e
 
 # Asset staging directory.
 #
-# NOTE (brand-identity): do NOT rely on ${FURRYOS_ASSETS} here.
-#   6000-stage-furryos-assets.chroot stages the layers into
-#   /opt/furryos/assets, but furryos-common.sh historically defined
-#   FURRYOS_ASSETS=/live-build/assets, which nothing ever creates. When the two
-#   disagreed, 6000 hit its `[ ! -d ... ]` guard, warned and exited 0, so every
-#   6xxx hook then read a non-existent SRC and silently skipped its work - the
-#   build "succeeded" with no branding at all.
-#   Resolving the path locally, with an explicit existence check, keeps this
-#   hook correct regardless of which value furryos-common.sh carries.
-_IDENTITY_ASSET_DIRS="/opt/furryos/assets/identity /live-build/assets/identity"
+# 6000-stage-furryos-assets.chroot copies the layers into /opt/furryos/assets
+# and furryos-common.sh exposes that path as ${FURRYOS_ASSETS}. Every layer
+# hook uses the same variable, so there is exactly one answer to "where are the
+# assets inside the chroot".
+#
+# (An earlier version of this hook carried its own two-candidate probe, because
+# furryos-common.sh once defined FURRYOS_ASSETS=/live-build/assets - a path that
+# never existed, since lb chroot_hooks only bind-mounts config/. That bug is
+# fixed in furryos-common.sh, so the probe and its dead /live-build branch are
+# gone.)
+SRC="${FURRYOS_ASSETS}/identity"
 
-SRC=""
-for _CANDIDATE in ${_IDENTITY_ASSET_DIRS}
-do
-	if [ -d "${_CANDIDATE}" ]
-	then
-		SRC="${_CANDIDATE}"
-		break
-	fi
-done
+furryos_log "Installing system identity layer from ${SRC}"
 
-furryos_log "Installing system identity layer from ${SRC:-<not found>}"
-
-if [ -z "${SRC}" ]
+if [ ! -d "${SRC}" ]
 then
-	echo "${FURRYOS_LOG_TAG} ERROR: identity assets not staged (looked in: ${_IDENTITY_ASSET_DIRS})" >&2
+	echo "${FURRYOS_LOG_TAG} ERROR: identity assets not staged at ${SRC}" >&2
 	echo "${FURRYOS_LOG_TAG} ERROR: run tools/sync-assets.sh and check 6000-stage-furryos-assets.chroot" >&2
 	exit 1
 fi
+
+# The identity layer is the image's whole "this is FurryOS" claim: a missing
+# file here means the ISO boots looking like upstream Ubuntu. Warn-and-continue
+# would let that ship, so these are hard requirements (the optional extras -
+# lsb-release, kcm-about-distrorc, the logo - keep their warn/fallback paths).
+for REQUIRED in os-release issue issue.net motd legal sshd_banner.conf
+do
+	furryos_need_file "${SRC}/${REQUIRED}" "identity layer file ${REQUIRED}"
+done
 
 # ------------------------------------------------------------ /etc/os-release
 # In Ubuntu (base-files) /etc/os-release is a SYMLINK to ../usr/lib/os-release.
@@ -86,8 +86,6 @@ then
 	fi
 	ln -sf ../usr/lib/os-release /etc/os-release
 	furryos_log "installed /usr/lib/os-release; /etc/os-release -> ../usr/lib/os-release"
-else
-	furryos_warn "identity/os-release missing"
 fi
 
 # ------------------------------------------------------------------ banners
@@ -96,8 +94,6 @@ for F in issue issue.net motd legal; do
 	then
 		furryos_install_file "${SRC}/${F}" "/etc/${F}" 0644
 		furryos_log "installed /etc/${F}"
-	else
-		furryos_warn "identity/${F} missing"
 	fi
 done
 
@@ -107,6 +103,37 @@ then
 	furryos_install_file "${SRC}/lsb-release" /etc/lsb-release 0644
 	furryos_log "installed /etc/lsb-release"
 fi
+
+# --------------------------------------------------------------- hostname
+# live-build's Debian default is visible in the serial/local login prompt and
+# shell prompt, breaking the same identity contract as os-release and banners.
+# This hook covers the chroot integration phase. live-build 20230502 later
+# hard-codes localhost.localdomain during chroot_hostname install and writes a
+# Debian hosts entry, so config/includes.chroot_after_packages/etc/{hostname,hosts}
+# is the authoritative final-stage copy restored by chroot_hostname/hosts remove.
+printf 'furryos\n' > /etc/hostname
+chmod 0644 /etc/hostname
+if [ -f /etc/hosts ]
+then
+	if grep -q '^127\.0\.1\.1[[:space:]]' /etc/hosts
+	then
+		sed -i 's|^127\.0\.1\.1[[:space:]].*|127.0.1.1\tfurryos|' /etc/hosts
+	elif ! grep -q '^127\.0\.1\.1[[:space:]]\+furryos\([[:space:]]\|$\)' /etc/hosts
+	then
+		printf '127.0.1.1\tfurryos\n' >> /etc/hosts
+	fi
+else
+	printf '127.0.0.1\tlocalhost\n127.0.1.1\tfurryos\n' > /etc/hosts
+fi
+[ "$(cat /etc/hostname)" = "furryos" ] || {
+	echo "${FURRYOS_LOG_TAG} ERROR: /etc/hostname is not furryos" >&2
+	exit 1
+}
+grep -q '^127\.0\.1\.1[[:space:]]\+furryos\([[:space:]]\|$\)' /etc/hosts || {
+	echo "${FURRYOS_LOG_TAG} ERROR: /etc/hosts has no FurryOS host mapping" >&2
+	exit 1
+}
+furryos_log "installed FurryOS hostname and loopback host mapping"
 
 # ---------------------------------------------------------------- SSH banner
 if [ -e "${SRC}/sshd_banner.conf" ]
@@ -118,8 +145,6 @@ then
 	furryos_install_file "${SRC}/sshd_banner.conf" \
 		/etc/ssh/sshd_config.d/010-furryos-banner.conf 0644
 	furryos_log "installed /etc/ssh/sshd_config.d/010-furryos-banner.conf"
-else
-	furryos_warn "identity/sshd_banner.conf missing; SSH banner not configured"
 fi
 
 # ---------------------------------------------------- update-motd.d management

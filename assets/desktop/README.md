@@ -145,6 +145,13 @@ grep -E '^(ColorScheme|Image)=' \
 `skel/.config/plasma-org.kde.plasma.desktop-appletsrc`）指向同一个
 `ColorScheme=FurryOS` 与同一个 `Image=FurryOS`，输出见上。
 
+t5 起这张表扩展为 **12 个语义键 × 6 个入口**：配色方案、`AccentColor`、控件样式、
+**图标主题**、**plasma 桌面主题名**、壁纸、默认壁纸主题、**KSplash 主题**、
+**正文字体/等宽字体**、**glide 开关**、**动画倍率**。缺任一键直接 FAIL ——
+「全局主题没说面板用哪个主题」正是「一半 FurryOS 一半 Breeze」的成因。
+跨四层（登录/桌面/动效/系统身份）的统一验收见 [`docs/VISUAL.md`](../../docs/VISUAL.md)，
+一键命令 `bash tools/verify-visual.sh`。
+
 ### 4. 新用户首次登录即定制外观
 
 ```bash

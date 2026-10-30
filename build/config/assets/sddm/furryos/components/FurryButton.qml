@@ -29,11 +29,8 @@ Rectangle {
 
     implicitWidth: 280
     implicitHeight: Theme.buttonHeight
-    radius: Theme.cornerRadius
+    radius: Theme.radiusControl
     border.color: Theme.furryosBlueLight
-
-    /* 抖动基准位：记录布局给定的原始 x，避免动画中重复求值漂移 */
-    property real restX: x
 
     /* 悬停 = 颜色变亮 + 缩放 1.03 + 边框浮现；
        按下 = 颜色加深 + 缩放 0.96。
@@ -80,37 +77,40 @@ Rectangle {
         },
         State {
             name: "disabled"
-            PropertyChanges { target: root; color: Theme.furryosBlueLight; scale: 1.0 }
-            PropertyChanges { target: root; border.width: 0 }
+            PropertyChanges { target: root; color: Theme.furryosDisabledBg; scale: 1.0 }
+            PropertyChanges { target: root; border.width: 1 }
         }
     ]
 
-    /* ---- 文本 ---- */
+    /* ---- 文本 ----
+       禁用态改用 furryos-text-muted (#4A637C) on furryos-blue-pale (#EAF2FF)
+       = 4.98:1。早先是「浅蓝底 + 白色文字」= 1.35:1，文字等于看不见。 */
     Text {
         id: label
         anchors.centerIn: parent
         text: ""
-        color: Theme.furryosWhite
+        color: root.buttonEnabled ? Theme.furryosWhite : Theme.furryosDisabledText
         font.pixelSize: root.fontSize
         font.weight: Font.DemiBold
         horizontalAlignment: Text.AlignHCenter
         verticalAlignment: Text.AlignVCenter
     }
 
-    /* ---- 按钮内爪印标记（品牌元素，小尺寸、位于文字左侧，不干扰阅读） ---- */
+    /* ---- 按钮内爪印标记（品牌元素，小尺寸、位于文字左侧，不干扰阅读） ----
+       必须用白色版：按钮底是 furryos-blue，蓝色爪印会与之同色不可见。 */
     Image {
         id: pawIcon
         visible: root.pawDecoration
         anchors.right: label.left
-        anchors.rightMargin: 10
+        anchors.rightMargin: Math.round(10 * (root.height / Theme.buttonHeight))
         anchors.verticalCenter: label.verticalCenter
-        width: 18
-        height: 18
-        source: "../assets/paw.svg"
-        sourceSize.width: 18
-        sourceSize.height: 18
+        width: Math.round(18 * (root.height / Theme.buttonHeight))
+        height: Math.round(18 * (root.height / Theme.buttonHeight))
+        source: "../assets/paw-white.svg"
+        sourceSize.width: width
+        sourceSize.height: height
         fillMode: Image.PreserveAspectFit
-        opacity: 0.9
+        opacity: root.buttonEnabled ? 0.9 : 0.45
     }
 
     /* ---- 交互 ---- */
@@ -123,7 +123,13 @@ Rectangle {
         onClicked: root.clicked()
     }
 
-    /* ---- 密码错误抖动：320ms，±6px，2 次 ---- */
+    /* 抖动位移：走 Translate 变换而不是直接动 x。
+       直接给 x 做动画有两个问题：(1) x 由锚点/布局驱动时，动画会覆盖绑定，
+       抖完之后按钮停在原处（布局位置）之外；(2) 早先用
+       `property real restX: x` 记基准位，而 x 一动 restX 就跟着漂，
+       四段的 to 值都在追当前 x，抖动会逐段累积、最后回不到 0。 */
+    transform: Translate { id: shakeTranslate; x: 0 }
+
     function shake() {
         shakeAnim.restart()
     }
@@ -134,17 +140,17 @@ Rectangle {
     SequentialAnimation {
         id: shakeAnim
         running: false
-        NumberAnimation { target: root; property: "x"
-            to: root.restX - Theme.shakeAmplitude
+        NumberAnimation { target: shakeTranslate; property: "x"
+            to: -Theme.shakeAmplitude
             duration: Theme.shakeDuration / 8; easing.type: Easing.InOutQuad }
-        NumberAnimation { target: root; property: "x"
-            to: root.restX + Theme.shakeAmplitude
+        NumberAnimation { target: shakeTranslate; property: "x"
+            to: Theme.shakeAmplitude
             duration: Theme.shakeDuration * 3 / 8; easing.type: Easing.InOutQuad }
-        NumberAnimation { target: root; property: "x"
-            to: root.restX - Theme.shakeAmplitude
+        NumberAnimation { target: shakeTranslate; property: "x"
+            to: -Theme.shakeAmplitude
             duration: Theme.shakeDuration * 3 / 8; easing.type: Easing.InOutQuad }
-        NumberAnimation { target: root; property: "x"
-            to: root.restX
+        NumberAnimation { target: shakeTranslate; property: "x"
+            to: 0
             duration: Theme.shakeDuration / 8; easing.type: Easing.InOutQuad }
     }
 }

@@ -6,12 +6,15 @@
 # This hook only performs the injection; it does not define the content.
 #
 # What the layer provides (assets/effects/):
-#   click-effect/effects-install.sh   its own installer (injection A+B)
-#   click-effect/effects-verify.sh    its own verification
-#   click-effect/community-click-effect.sh   degradation path (NOT executed)
-#   splash/furryos-splash.svg         splash artwork
-#   splash/furryos-plymouth/          plymouth theme assets (images only)
-#   splash/furryos-ksplash/           (currently empty)
+#   click-effect/effects-install.sh        its own installer (injection A+B)
+#   click-effect/effects-verify.sh         its own verification
+#   click-effect/community-click-effect.sh degradation path (NOT executed)
+#   splash/effects-splash-install.sh       splash installer (plymouth + ksplash)
+#   splash/furryos-splash.svg              splash artwork
+#   splash/furryos-plymouth/               plymouth theme (furryos.plymouth +
+#                                          furryos.script + images/)
+#   splash/furryos-ksplash/                KSplash look-and-feel theme
+#                                          (metadata.json + contents/)
 #
 # Injection strategy
 # ------------------
@@ -37,12 +40,24 @@
 #   (it appends only missing keys), but the intended order is desktop-visual
 #   first, then effects.
 #
-# What this hook additionally does (beyond the layer's installer):
+# What this hook additionally does (beyond the click-effect installer):
 #   * splash artwork -> /usr/share/backgrounds/furryos/splash.{svg,png}
-#   * plymouth theme: assets/effects/splash/furryos-plymouth currently only
-#     ships images/ and has NO .plymouth file, so there is nothing that can be
-#     registered with update-alternatives. plymouth is also deliberately NOT in
-#     the package list. This is a documented degradation, not a failure.
+#   * runs the layer's splash installer (splash/effects-splash-install.sh),
+#     which is the layer's authoritative implementation for:
+#       - KSplash look-and-feel theme -> /usr/share/plasma/look-and-feel/
+#         org.furryos.desktop/ plus /etc/xdg/ksplashrc selecting it
+#       - plymouth theme files -> /usr/share/plymouth/themes/furryos/
+#     and then ASSERTS that the KSplash theme really landed. Before this was
+#     wired in, the whole KSplash theme was dead weight in the repo: no hook
+#     called the installer, so the image booted with Breeze's splash.
+#
+# PLYMOUTH STATUS (documented degradation, not a silent one)
+#   plymouth itself is not in config/package-lists/, so the theme files are
+#   staged but cannot be activated (no plymouthd in the image, no initramfs
+#   hook). Enabling it requires: add `plymouth` + `plymouth-themes` to the
+#   package list, add `splash` to the kernel command line, and run
+#   `plymouth-set-default-theme furryos` + `update-initramfs -u`. Recorded in
+#   README.md 5.2 / docs/BUILD.md 3.3. The ksplash half needs none of that.
 
 set -e
 
@@ -54,8 +69,9 @@ furryos_log "Installing motion effects layer from ${SRC}"
 
 if [ ! -d "${SRC}" ]
 then
-	furryos_warn "effects layer not staged; skipping (click effect and splash will be absent)"
-	exit 0
+	echo "${FURRYOS_LOG_TAG} ERROR: effects layer not staged at ${SRC}" >&2
+	echo "${FURRYOS_LOG_TAG} ERROR: run tools/sync-assets.sh and check 6000-stage-furryos-assets.chroot" >&2
+	exit 1
 fi
 
 # --------------------------------------------------- click effect (A + B)
@@ -67,9 +83,15 @@ then
 	then
 		# Build-time mode: inject into skel + /etc/xdg. NOT --live, because
 		# there is no Plasma session in a chroot.
-		PREFIX=/ "${INSTALLER}" || furryos_warn "effects-install.sh returned non-zero"
+		PREFIX=/ "${INSTALLER}" || {
+			echo "${FURRYOS_LOG_TAG} ERROR: click-effect/effects-install.sh failed" >&2
+			exit 1
+		}
 	else
-		PREFIX=/ sh "${INSTALLER}" || furryos_warn "effects-install.sh returned non-zero"
+		PREFIX=/ sh "${INSTALLER}" || {
+			echo "${FURRYOS_LOG_TAG} ERROR: click-effect/effects-install.sh failed" >&2
+			exit 1
+		}
 	fi
 else
 	furryos_warn "layer installer effects-install.sh not found; using build-verify fallback"
@@ -114,34 +136,69 @@ for RASTER in splash.png furryos-splash.png furryos-splash-preview.png; do
 	fi
 done
 
-# ---------------------------------------------------------- plymouth theme
-# plymouth is deliberately NOT in the package list (see docs/BUILD.md), so
-# even a complete theme could not be activated without adding the package.
-# Additionally the layer's furryos-plymouth/ currently contains only images/
-# and no .plymouth control file, so there is nothing to register. Handle both
-# cases and record what happened.
-PLYMOUTH_SRC="${SRC}/splash/furryos-plymouth"
+# --------------------------------------------- splash: ksplash + plymouth
+# The layer owns the splash implementation; call its installer instead of
+# duplicating the copy logic here (an earlier version of this hook copied
+# the plymouth theme by hand and never installed ksplash at all).
+SPLASH_INSTALLER="${SRC}/splash/effects-splash-install.sh"
 
-if [ -d "${PLYMOUTH_SRC}" ] && [ -n "$(ls -A "${PLYMOUTH_SRC}" 2>/dev/null)" ]
+if [ ! -e "${SPLASH_INSTALLER}" ]
 then
-	if ls "${PLYMOUTH_SRC}"/*.plymouth >/dev/null 2>&1
-	then
-		install -d -m 0755 /usr/share/plymouth/themes/furryos
-		cp -a "${PLYMOUTH_SRC}/." /usr/share/plymouth/themes/furryos/
-		furryos_log "copied plymouth theme to /usr/share/plymouth/themes/furryos"
+	echo "${FURRYOS_LOG_TAG} ERROR: splash/effects-splash-install.sh missing from the effects layer" >&2
+	exit 1
+fi
 
-		if command -v update-alternatives >/dev/null 2>&1
-		then
-			update-alternatives --install /usr/share/plymouth/themes/default.plymouth \
-				default.plymouth /usr/share/plymouth/themes/furryos/furryos.plymouth 100 \
-				|| furryos_warn "update-alternatives for plymouth failed"
-			furryos_log "registered plymouth theme via update-alternatives"
-		fi
-	else
-		furryos_warn "plymouth theme assets found but no *.plymouth control file; cannot register"
-	fi
-else
-	furryos_warn "no plymouth theme provided; boot splash will stay the Ubuntu default"
+# The installer warns-and-skips a theme directory it cannot find, so the
+# assertions below would be satisfied by files left over from an earlier
+# build. Require the sources up front: a half-synced asset tree must fail
+# here, not silently ship Breeze's splash.
+furryos_need_file "${SRC}/splash/furryos-ksplash/metadata.json" \
+	"KSplash look-and-feel metadata (run tools/sync-assets.sh)"
+furryos_need_file "${SRC}/splash/furryos-ksplash/contents/splash/Splash.qml" \
+	"KSplash Splash.qml"
+
+# PREFIX=/ so it writes into the chroot; without --initramfs because
+# live-build builds the initramfs itself.
+PREFIX=/ sh "${SPLASH_INSTALLER}" || {
+	echo "${FURRYOS_LOG_TAG} ERROR: splash/effects-splash-install.sh failed" >&2
+	exit 1
+}
+
+# --- assert the KSplash theme is really installed and selected --------------
+# Contract: "启动画面：蓝白底 + 爪印". These are hard requirements, not warnings:
+# without them the image silently boots with Breeze's splash.
+furryos_need_file /usr/share/plasma/look-and-feel/org.furryos.desktop/metadata.json \
+	"KSplash look-and-feel metadata"
+furryos_need_file /usr/share/plasma/look-and-feel/org.furryos.desktop/contents/splash/Splash.qml \
+	"KSplash splash scene"
+furryos_need_file /etc/xdg/ksplashrc "system-wide ksplashrc selecting the theme"
+
+# Existence alone is insufficient: ksplashqml runs as the live user. A 0600
+# Splash.qml makes QuickViewSharedEngine::rootObject() return null, and the
+# subsequent setStage() dereferences it in QObject::setProperty (Signal 11).
+KSPLASH_TREE=/usr/share/plasma/look-and-feel/org.furryos.desktop
+BAD_MODES="$(find "${KSPLASH_TREE}" -type d ! -perm -055 -print -quit; find "${KSPLASH_TREE}" -type f ! -perm -044 -print -quit)"
+if [ -n "${BAD_MODES}" ]
+then
+	echo "${FURRYOS_LOG_TAG} ERROR: KSplash assets are not world-readable/traversable: ${BAD_MODES}" >&2
+	exit 1
+fi
+furryos_log "KSplash QML/metadata/images are readable by the live user"
+
+if ! grep -q '^Theme=org\.furryos\.desktop$' /etc/xdg/ksplashrc
+then
+	echo "${FURRYOS_LOG_TAG} ERROR: /etc/xdg/ksplashrc does not select org.furryos.desktop" >&2
+	exit 1
+fi
+
+furryos_log "KSplash theme installed and selected (org.furryos.desktop)"
+
+# plymouth: the installer stages /usr/share/plymouth/themes/furryos. It cannot
+# be activated here - plymouth is not in config/package-lists - so record the
+# fact instead of pretending the boot splash is branded.
+if [ -f /usr/share/plymouth/themes/furryos/furryos.plymouth ]
+then
+	furryos_log "plymouth theme files staged at /usr/share/plymouth/themes/furryos (inactive: plymouth not in the package list)"
 fi
 
 # ------------------------------------------------------------- verify
@@ -149,14 +206,16 @@ if [ -f /etc/skel/.config/kwinrc ] && grep -q 'mouseclickEnabled=true' /etc/skel
 then
 	furryos_log "skel kwinrc: [Plugins] mouseclickEnabled=true present"
 else
-	furryos_warn "skel kwinrc does not enable mouseclickEnabled"
+	echo "${FURRYOS_LOG_TAG} ERROR: /etc/skel/.config/kwinrc does not enable mouseclickEnabled" >&2
+	exit 1
 fi
 
 if [ -f /etc/xdg/kwinrc ] && grep -q 'mouseclickEnabled=true' /etc/xdg/kwinrc
 then
 	furryos_log "/etc/xdg/kwinrc: [Plugins] mouseclickEnabled=true present"
 else
-	furryos_warn "/etc/xdg/kwinrc does not enable mouseclickEnabled"
+	echo "${FURRYOS_LOG_TAG} ERROR: /etc/xdg/kwinrc does not enable mouseclickEnabled" >&2
+	exit 1
 fi
 
 furryos_log "Motion effects layer installed."

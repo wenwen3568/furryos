@@ -34,11 +34,19 @@ assets/sddm/
 | `assets/sddm/furryos/` | `/usr/share/sddm/themes/furryos/` |
 | `assets/sddm/sddm.conf` | `/etc/sddm.conf` |
 
-安装方式（成员五在 `build/config/hooks/` 中调用）：
+安装方式（`6120-integrate-sddm-assets.chroot` 调用；chroot 里可见的是 6000 暂存出来的
+`/opt/furryos/assets`，不是宿主上的仓库路径）：
 
 ```sh
-/root/furryos/assets/sddm/install-sddm-theme.sh /root/furryos/assets/sddm/furryos "$1"
+# 构建期（钩子内部）：
+PREFIX=/ sh "${FURRYOS_ASSETS}/sddm/install-sddm-theme.sh" "${FURRYOS_ASSETS}/sddm/furryos"
+# 手工装到本机 /（同一脚本，同一份 sddm.conf 资产）：
+sudo sh assets/sddm/install-sddm-theme.sh assets/sddm/furryos
 ```
+
+脚本把 `assets/sddm/sddm.conf` **原样**装成 `/etc/sddm.conf`（`Current=furryos`、
+`ThemeDir=`、`CursorTheme=Breeze_Snow`）；资产缺失时才回退到脚本内置模板，
+避免「资产里改了一份、脚本里写死另一份」。
 
 ---
 
@@ -67,30 +75,31 @@ assets/sddm/
 
 | 包 | 用途 | 缺失时的现象 |
 |---|---|---|
-| **`qt5-image-formats`** | 提供 `libqsvg.so`，即 Qt 的 SVG 图像插件 | **爪印全部静默消失**——不报错、不警告，只是空白 |
+| **`libqt5svg5`** | 提供 `plugins/imageformats/libqsvg.so`，即 Qt 的 SVG 图像插件 | **爪印全部静默消失**——不报错、不警告，只是空白 |
 
 > **这是一个很难查的失败模式。** Qt 的 `Image` 元素加载 SVG 失败时，
 > 控制台只输出一行 `QML Image: Cannot open: .../paw.svg` 到 SDDM 日志，
-> 界面上不显示任何占位符或错误提示。如果镜像里漏了 `qt5-image-formats`，
+> 界面上不显示任何占位符或错误提示。如果镜像里漏了 `libqt5svg5`，
 > 用户会看到「蓝白配色正常、按钮动画正常，但就是没有爪印」，
 > 极易误判为主题缺陷而非打包缺失。
 
 ### 依赖清单（验收用）
 
 ```sh
-# 在目标系统上执行，预期三个包都是 ii 状态
-dpkg -l | grep -E 'qml-module-qtquick2|libqt5quick5|qt5-image-formats'
+# 在目标系统上执行，预期这些包都是 ii 状态
+dpkg -l | grep -E 'qml-module-qtquick2|libqt5quick5|libqt5svg5|qt5-image-formats-plugins'
 ```
 
 | 包 | 提供的 QML 能力 | 缺失后果 |
 |---|---|---|
 | `qml-module-qtquick2` | `QtQuick 2.15`（Rectangle/Text/Image/MouseArea/State/Behavior…） | 整个主题无法加载，SDDM 回退默认主题 |
 | `libqt5quick5` | QML 引擎与场景图运行时 | 同上 |
-| `qt5-image-formats` | `libqsvg.so`，SVG 渲染 | **仅爪印消失**，其余全部正常 |
+| `libqt5svg5` | `libqsvg.so`（`plugins/imageformats/`），SVG 渲染 | **仅爪印消失**，其余全部正常 |
 
 `QtQml` 与 `QtQuick.Layouts` 分别由 `libqt5qml5`、`qml-module-qtquick-layouts`
 提供，通常是 `qml-module-qtquick2` 的依赖被自动带入；`install-sddm-theme.sh`
-不做依赖安装，请在 live-build 的包列表阶段确保上述三包在位。
+不做依赖安装，请在 live-build 的包列表阶段确保上述包在位。注意 `libqsvg.so`
+由 `libqt5svg5` 提供，**不是** `qt5-image-formats-plugins`（后者提供 tiff/webp/jp2 等格式）。
 
 ---
 
@@ -295,15 +304,17 @@ grep -rn 'paw.svg' /usr/share/sddm/themes/furryos/Main.qml
 依赖清单与缺失后果详见第 3 节。
 
 ```sh
-dpkg -l | grep -E 'qml-module-qtquick2|libqt5quick5|qt5-image-formats|libqt5qml5|qml-module-qtquick-layouts'
+dpkg -l | grep -E 'qml-module-qtquick2|libqt5quick5|libqt5svg5|qt5-image-formats-plugins|libqt5qml5|qml-module-qtquick-layouts'
 ```
 
 **预期看到**：五个包都是 `ii` 状态。
 
-**若缺 `qt5-image-formats`**：这是最隐蔽的情况——界面、配色、按钮动画
+**若缺 `libqt5svg5`**：这是最隐蔽的情况——界面、配色、按钮动画
 全部正常，**只有爪印消失**，且 Qt 不弹任何错误对话框。修复：
 ```sh
-sudo apt-get install -y qt5-image-formats
+sudo apt-get install -y libqt5svg5
+# 确认插件文件在位（由 libqt5svg5 提供）：
+ls /usr/lib/x86_64-linux-gnu/qt5/plugins/imageformats/libqsvg.so
 ```
 
 **若缺 `qml-module-qtquick2` 或 `libqt5quick5`**：主题整体无法加载，
@@ -339,7 +350,7 @@ journalctl -u sddm -n 100 --no-pager | grep -iE 'qml|furryos|theme|error'
 | 步骤 1 找不到主题文件 | live-build hook 未执行，或 `$1` 前缀传错 | 检查 hook 是否可执行、是否在 chroot 阶段运行；重跑 `install-sddm-theme.sh <主题目录> <前缀>` |
 | 步骤 2 的 Current 不是 furryos | 其它包（如 `sddm-theme-debian-breeze`）在 `update-alternatives` 里覆盖了 `/etc/sddm.conf` | 在 hook 末尾再写一次 sddm.conf，或在 `config/hooks/` 里置于 alternatives 之后执行 |
 | 步骤 4 重启后界面仍是 breeze | SDDM 缓存或旧进程未退 | `systemctl stop sddm && pkill -f sddm-greeter; systemctl start sddm` |
-| 界面变了但爪印消失 | SVG 渲染插件缺失 | 装 `qt5-image-formats`（降级步骤 4） |
+| 界面变了但爪印消失 | SVG 渲染插件缺失（`libqsvg.so`） | 装 `libqt5svg5`（降级步骤 4） |
 | 界面变了但按钮点击无动画 | 鼠标事件被上层覆盖，或主题文件被截断 | 确认 `components/` 6 个文件齐全；重跑注入脚本 |
 | 按钮文字显示为方块 | 中文字体缺失 | 装 `fonts-noto-cjk`（与主题无关，但影响观感） |
 
